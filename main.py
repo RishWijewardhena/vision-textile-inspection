@@ -132,18 +132,22 @@ def main():
                 
                 # Get stitch count from serial
                 current_stitch_count = serial_reader.get_stitch_count() if serial_reader else 0
+
+              
                 
                 # Calculate total distance
                 # measurements is a dict with keys: edge_distance_mm, stitch_width_mm, stitch_count, timestamp
                 seam_length_mm = measurements.get('edge_distance_mm', None)  # top_distance
                 stitch_width_mm = measurements.get('stitch_width_mm', None)
+
+                # Calculate movement since last measurement
+                stitch_delta = current_stitch_count - last_stitch_count
+                moved_distance_mm = stitch_delta * stitch_width_mm
+                total_distance_mm += moved_distance_mm
+                last_stitch_count = current_stitch_count
                 
                 if seam_length_mm is not None and current_stitch_count > 0 and stitch_width_mm is not None:
-                    # Calculate movement since last measurement
-                    stitch_delta = current_stitch_count - last_stitch_count
-                    moved_distance_mm = stitch_delta * stitch_width_mm
-                    total_distance_mm += moved_distance_mm
-                    last_stitch_count = current_stitch_count
+                    
                     
                     # Insert to database
                     if db and stitch_delta > 0: #only log if there's a new rotation

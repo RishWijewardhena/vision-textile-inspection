@@ -127,6 +127,7 @@ def get_instance_mask_as_bitmap(result, idx, h, w):
             cv2.fillPoly(mask, [poly_pts], 1)  # Rasterize polygon
             if np.count_nonzero(mask) > 0:
                 return mask
+        
     except Exception:
         print("Warning: failed to extract mask via polygon XY method")
         pass
@@ -141,6 +142,8 @@ def get_instance_mask_as_bitmap(result, idx, h, w):
                 cv2.fillPoly(mask, [poly_pts], 1)
                 if np.count_nonzero(mask) > 0:
                     return mask
+                
+   
     except Exception:
         print("Warning: failed to extract mask via polygon method")
         pass
