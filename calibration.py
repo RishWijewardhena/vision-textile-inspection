@@ -53,8 +53,9 @@ def create_charuco_board():
     try:
         # OpenCV 4.7+
         aruco_dict = cv2.aruco.getPredefinedDictionary(DICT_TYPE)
+        #(SQUARES_X, SQUARES_Y): Grid size (e.g., (5, 7) = 5 columns × 7 rows)
         board = cv2.aruco.CharucoBoard(
-            (SQUARES_X, SQUARES_Y),
+            (SQUARES_Y, SQUARES_X),
             SQUARE_LENGTH,
             MARKER_LENGTH,
             aruco_dict
@@ -72,7 +73,7 @@ def create_charuco_board():
         # OpenCV <= 4.6 fallback
         aruco_dict = cv2.aruco.Dictionary_get(DICT_TYPE)
         board = cv2.aruco.CharucoBoard_create(
-            SQUARES_X, SQUARES_Y,
+            SQUARES_Y, SQUARES_X,
             SQUARE_LENGTH, MARKER_LENGTH,
             aruco_dict
         )
@@ -116,7 +117,10 @@ def run_extrinsic_calibration(board=None, charuco_detector=None, camera_index=CA
         if not ret:
             continue
 
+        #change the camera to  be able to detect the inverse charuco markers
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        inv_gray=cv2.bitwise_not(gray)
+        # cv2.imshow("Inverted Gray", inv_gray)
 
         charuco_corners = None
         charuco_ids = None
@@ -124,26 +128,30 @@ def run_extrinsic_calibration(board=None, charuco_detector=None, camera_index=CA
         # ---------- DETECTION ----------
         try:
             # OpenCV 4.7+
-            charuco_corners, charuco_ids, _, _ = charuco_detector.detectBoard(gray)
+            charuco_corners, charuco_ids, _, _ = charuco_detector.detectBoard(inv_gray)
+            print(f"Detected {0 if charuco_ids is None else len(charuco_ids)} Charuco corners")
 
             if charuco_ids is None or len(charuco_ids) == 0:
                 charuco_corners = None
                 charuco_ids = None
 
-        except Exception:
-            # Older OpenCV fallback
-            aruco_dict = cv2.aruco.Dictionary_get(DICT_TYPE)
-            params = cv2.aruco.DetectorParameters_create()
-            marker_corners, marker_ids, _ = cv2.aruco.detectMarkers(
-                gray, aruco_dict, parameters=params
-            )
+        except AttributeError:
+            print("❌ OpenCV version does not support CharucoDetector")
+        # except Exception:
+        #     # Older OpenCV fallback
+        #     aruco_dict = cv2.aruco.Dictionary_get(DICT_TYPE)
+        #     params = cv2.aruco.DetectorParameters_create()
+        #     marker_corners, marker_ids, _ = cv2.aruco.detectMarkers(
+        #         inv_gray, aruco_dict, parameters=params
+        #     )
 
-            if marker_ids is not None:
-                _, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
-                    marker_corners, marker_ids, gray, board
-                )
+        #     if marker_ids is not None:
+        #         _, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
+        #             marker_corners, marker_ids, gray, board
+        #         )
 
         # ---------- DRAW ----------
+
         if charuco_ids is not None:
             cv2.aruco.drawDetectedCornersCharuco(
                 frame, charuco_corners, charuco_ids
@@ -171,9 +179,9 @@ def run_extrinsic_calibration(board=None, charuco_detector=None, camera_index=CA
                 2
             )
 
-        cv2.imshow("Extrinsic Calibration", frame)
+        # cv2.imshow("Extrinsic Calibration", frame)
         key = cv2.waitKey(1) & 0xFF
-    
+        cv2.imshow("Inverted Gray", frame)
 
         # ---------- AUTO CAPTURE ----------
         if capture_start and (time.time() - capture_start) >= CAPTURE_DELAY:
