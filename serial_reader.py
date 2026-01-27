@@ -76,12 +76,6 @@ class SerialReader:
         with self.lock:
             return self.latest_stitch_count
     
-    def reset_stitch_count(self):
-        """Reset stitch count to zero"""
-        with self.lock:
-            self.latest_stitch_count = 0
-        if LOG_DEBUG:
-            print("🔄 Stitch count reset to 0")
     
     def stop(self):
         """Stop reading and close serial connection"""
