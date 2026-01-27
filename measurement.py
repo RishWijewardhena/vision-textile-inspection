@@ -27,14 +27,9 @@ def force_camera_resolution(cap, w, h):
     aw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     ah = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-   # Disable auto exposure (V4L2 expects 1 = manual, 3 = auto)
-    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
-
-    # Set exposure value (lower = darker, higher = brighter; camera dependent)
-    cap.set(cv2.CAP_PROP_EXPOSURE, -4)
-
-    # # Optional: disable autofocus if supported
-    # cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+    # Disable auto exposure (V4L2 expects 1 = manual, 3 = auto)
+    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3)
+    cap.set(cv2.CAP_PROP_EXPOSURE, CAMERA_EXPOSURE)  # Adjust this value``
 
     # # Optional: set gain
     # cap.set(cv2.CAP_PROP_GAIN, 0)
