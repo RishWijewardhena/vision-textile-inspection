@@ -41,7 +41,7 @@ class FileCleanerThread:
         self : object
         '''
 
-        if not os.path.exsists(self.directory):
+        if not os.path.exists(self.directory):
             print(f"Directory {self.directory} does not exist. Skipping cleanup.")
             return
         
@@ -59,7 +59,7 @@ class FileCleanerThread:
                     continue
                 
                 #get the file modification time
-                file_mtime=datetime.fromtimesatmp(os.path.getmtime(filepath))
+                file_mtime=datetime.fromtimestamp(os.path.getmtime(filepath))
 
                 #delete if older than cutoff time
                 if file_mtime<cutoff_time:
@@ -138,7 +138,7 @@ class FileCleanerThread:
         self._delete_old_files()
 
 #STANDALONE TEST
-if __name__=="main__":
+if __name__=="__main__":
     cleaner=FileCleanerThread()
     cleaner.start()
     try:
