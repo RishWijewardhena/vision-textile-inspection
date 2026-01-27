@@ -12,7 +12,8 @@ from config import *
 from calibration import run_extrinsic_calibration, create_charuco_board
 from serial_reader import SerialReader
 from database import DatabaseHandler
-from measurement import StitchMeasurementApp    
+from measurement import StitchMeasurementApp   
+from file_cleaner import FileCleanerThread
 
 
 def run_startup_calibration():
@@ -102,6 +103,11 @@ def main():
         print("⚠️ Serial connection failed - continuing without serial data")
         serial_reader = None
     
+    #initialize file cleaner
+    file_cleaner=FileCleanerThread()
+    file_cleaner.start()
+
+
     print("\n" + "="*60)
     print("🎯 SYSTEM READY - Starting measurements")
     print("="*60)
@@ -141,10 +147,11 @@ def main():
                 stitch_width_mm = measurements.get('stitch_width_mm', None)
 
                 # Calculate movement since last measurement
-                stitch_delta = current_stitch_count - last_stitch_count
-                moved_distance_mm = stitch_delta * stitch_width_mm
-                total_distance_mm += moved_distance_mm
-                last_stitch_count = current_stitch_count
+                if stitch_width_mm is not None:
+                    stitch_delta = current_stitch_count - last_stitch_count
+                    moved_distance_mm = stitch_delta * stitch_width_mm
+                    total_distance_mm += moved_distance_mm
+                    last_stitch_count = current_stitch_count
                 
                 if seam_length_mm is not None and current_stitch_count > 0 and stitch_width_mm is not None:
                     
@@ -190,12 +197,6 @@ def main():
             if key == ord('q'):
                 print("\n🛑 Shutdown requested by user")
                 break
-            elif key == ord('r'):
-                if serial_reader:
-                    serial_reader.reset_stitch_count()
-                    last_stitch_count = 0
-                    total_distance_mm = 0.0
-                    print("🔄 Stitch count and total distance reset")
     
     except KeyboardInterrupt:
         print("\n🛑 Interrupted by user")
@@ -209,6 +210,8 @@ def main():
         
         if db:
             db.close()
+
+        file_cleaner.stop() #stop file cleaner thread
         
         measurement_app.cap.release()
         cv2.destroyAllWindows()
