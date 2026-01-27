@@ -2,3 +2,4 @@ Main/
 __pycache__/
 .env/
 saved_annotations/
+test.py
