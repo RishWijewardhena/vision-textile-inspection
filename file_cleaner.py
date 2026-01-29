@@ -1,5 +1,5 @@
 """""
-File cleanup modeule for removing old files based on retention policy.
+File cleanup module for removing old files based on retention policy.
 """
 
 import os
