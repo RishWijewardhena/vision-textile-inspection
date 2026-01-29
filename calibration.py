@@ -10,7 +10,7 @@ from config import (
     INTRINSICS_FILE, EXTRINSICS_FILE, DICT_TYPE,
     SQUARES_X, SQUARES_Y, SQUARE_LENGTH, MARKER_LENGTH,
     MIN_CHARUCO_CORNERS, CAMERA_INDEX,
-    CALIB_W, CALIB_H, CAPTURE_DELAY, LOG_DEBUG
+    CALIB_W, CALIB_H, CAPTURE_DELAY, LOG_DEBUG, SHOW_WINDOWS
 )
 
 # --------------------------------------------------
@@ -181,7 +181,8 @@ def run_extrinsic_calibration(board=None, charuco_detector=None, camera_index=CA
 
         # cv2.imshow("Extrinsic Calibration", frame)
         key = cv2.waitKey(1) & 0xFF
-        cv2.imshow("Inverted Gray", frame)
+        if SHOW_WINDOWS:
+            cv2.imshow("Inverted Gray", frame)
 
         # ---------- AUTO CAPTURE ----------
         if capture_start and (time.time() - capture_start) >= CAPTURE_DELAY:

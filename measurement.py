@@ -27,12 +27,14 @@ def force_camera_resolution(cap, w, h):
     aw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     ah = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    # Disable auto exposure (V4L2 expects 1 = manual, 3 = auto)
-    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3)
+    # Set auto exposure (V4L2 expects 1 = manual, 3 = auto)
+    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, CAMERA_AUTO_EXPOSURE)
+   
     cap.set(cv2.CAP_PROP_EXPOSURE, CAMERA_EXPOSURE)  # Adjust this value``
 
     # # Optional: set gain
-    # cap.set(cv2.CAP_PROP_GAIN, 0)
+    # cap.set(cv2.CAP_PROP_GAIN, 50)
+    # cap.set(cv2.CAP_PROP_BRIGHTNESS, 150)
 
     if aw != w or ah != h:
         print(f"Warning: camera resolution {aw}x{ah}, expected {w}x{h}")
@@ -77,18 +79,6 @@ def get_instance_mask_as_bitmap(result, idx, h, w):
         mask = (arr > 0).astype(np.uint8)
         if np.count_nonzero(mask) > 0:
             return mask
-    except Exception:
-        pass
-
-    # Method 2: Polygon XY coordinates
-    try:
-        poly = result.masks.xy[idx]
-        poly_pts = np.array(poly, dtype=np.int32)
-        mask = np.zeros((h, w), dtype=np.uint8)
-        if poly_pts.ndim == 2 and poly_pts.shape[0] > 2:
-            cv2.fillPoly(mask, [poly_pts], 1)
-            if np.count_nonzero(mask) > 0:
-                return mask
     except Exception:
         pass
 
@@ -150,7 +140,7 @@ class StitchMeasurementApp:
         self.n_c, self.d_c = compute_camera_plane(self.R, self.t)
 
         self.model = YOLO(model_path)
-        self.cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
+        self.cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2) # for linux
         self.aw, self.ah = force_camera_resolution(self.cap, calib_w, calib_h)
 
         self.frame_buf_dist = deque(maxlen=frame_buffer)
@@ -175,20 +165,25 @@ class StitchMeasurementApp:
         return combined
 
     def _fabric_lower_envelope(self, fabric_mask):
-        """Trace the lower envelope (bottommost fabric pixel) per column."""
+        """Trace the lower envelope (bottommost fabric pixel) per column.
+        Args:
+            fabric_mask: Binary mask of fabric area.
+        returns:
+            envelope: 1D array of y-coordinates of lower envelope per x-column having fabric; -1 if no fabric in that column.
+        """
         h, w = fabric_mask.shape
-        envelope = np.full((w,), -1, dtype=int)
-        rev = fabric_mask[::-1, :]
+        envelope = np.full((w,), -1, dtype=int) #1-dimensional with length w.
+        rev = fabric_mask[::-1, :] # flips the rows of a 2D array while keeping the columns in order.
         has_any = rev.any(axis=0)
-        idx_in_rev = np.argmax(rev > 0, axis=0)
-        for x in range(w):
+        idx_in_rev = np.argmax(rev > 0, axis=0) #This line is scanning the reversed mask column by column to find the first foreground pixel from the bottom.
+        for x in range(w): #Loops over each column of the mask.
             if has_any[x]:
-                envelope[x] = h - 1 - idx_in_rev[x]
+                envelope[x] = h - 1 - idx_in_rev[x] #idx_in_rev[x] row index in the reversed mask of the first foreground pixel from bottom.
         return envelope
 
     def process_frame(self, frame):
         """Process frame to compute seam metrics and annotations."""
-        h, w = frame.shape[:2]
+        h, w = frame.shape[:2] #only getting the height and width of the frame.
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         try:
@@ -212,21 +207,17 @@ class StitchMeasurementApp:
                 cls_arr, boxes = [], []
 
             for i, cls_id in enumerate(cls_arr):
-                cid = int(cls_id)
-                x1, y1, x2, y2 = map(int, boxes[i])
+                cid = int(cls_id) # converting it to int
+                x1, y1, x2, y2 = map(int, boxes[i]) #Take each value in boxes[i]Convert it to an integer using int()Assign the results to x1, y1, x2, y2
                 mask = get_instance_mask_as_bitmap(r, i, h, w)
 
-                if cid == self.stitch_id:
+                if cid == self.stitch_id: #checking if the detected object is a stitch
                     stitch_masks.append(mask)
                     stitch_boxes.append((x1, y1, x2, y2))
                     cv2.rectangle(annotated, (x1, y1), (x2, y2), (255, 255, 0), 1)
                 elif cid == self.fabric_id:
                     if mask is not None:
                         fabric_masks.append(mask)
-                    else:
-                        tmp = np.zeros((h, w), dtype=np.uint8)
-                        cv2.rectangle(tmp, (x1, y1), (x2, y2), 1, -1)
-                        fabric_masks.append(tmp)
                     cv2.rectangle(annotated, (x1, y1), (x2, y2), (255, 0, 255), 2)
 
         if LOG_DEBUG:
@@ -259,6 +250,7 @@ class StitchMeasurementApp:
             if mask is not None and mask.sum() > 0:
                 M = cv2.moments((mask>0).astype(np.uint8))
                 if M["m00"] != 0:
+
                     cx = float(M["m10"] / M["m00"])
                     cy = float(M["m01"] / M["m00"])
                 else:
@@ -333,6 +325,11 @@ class StitchMeasurementApp:
 
         # Measure distances and widths
         per_dists, per_widths = [], []
+        per_pixel_widths = [] #collection of all pixel widths for 
+
+        if LOG_DEBUG:
+            print(f"\n{'='*60}")
+            print(f"Processing {len(final_indices)} stitches")
 
         for i in final_indices:
             cx, cy = stitch_meta[i]["cx"], stitch_meta[i]["cy"]
@@ -359,6 +356,9 @@ class StitchMeasurementApp:
                     cv2.circle(annotated, (cx_int, int(round(edge_y))), 2, (255,0,255), -1)
 
             left_px, right_px = stitch_meta[i]["left_px"], stitch_meta[i]["right_px"]
+            pixel_width=right_px - left_px
+            per_pixel_widths.append(pixel_width)
+            
             p_left = pixel_to_world_using_camera_plane(float(left_px), float(cy), 
                                                        self.K, self.dist, self.R, 
                                                        self.t, self.n_c, self.d_c)
@@ -366,12 +366,12 @@ class StitchMeasurementApp:
                                                         self.K, self.dist, self.R, 
                                                         self.t, self.n_c, self.d_c)
             
-            if p_left is not None and p_right is not None:
-                width_mm = float(np.linalg.norm(p_right - p_left)) * 1000.0
-                per_widths.append(width_mm)
-                cv2.circle(annotated, (int(round(left_px)), int(round(cy))), 3, (200,200,0), -1)
-                cv2.circle(annotated, (int(round(right_px)), int(round(cy))), 3, (200,200,0), -1)
-                cv2.line(annotated, (int(round(left_px)), int(round(cy))), 
+            # if p_left is not None and p_right is not None:
+            width_mm = float(np.linalg.norm(p_right - p_left)) * 1000.0
+            per_widths.append(width_mm)
+            cv2.circle(annotated, (int(round(left_px)), int(round(cy))), 3, (200,200,0), -1)
+            cv2.circle(annotated, (int(round(right_px)), int(round(cy))), 3, (200,200,0), -1)
+            cv2.line(annotated, (int(round(left_px)), int(round(cy))), 
                         (int(round(right_px)), int(round(cy))), (200,200,0), 1)
 
             cv2.circle(annotated, (int(round(cx)), int(round(cy))), 10, (255,0,0), -1)
@@ -456,11 +456,13 @@ class StitchMeasurementApp:
                 info = f"Edge: {measurements.get('edge_distance_mm', 'N/A')}mm | Width: {measurements.get('stitch_width_mm', 'N/A')}mm"
                 print(f"Saved: {save_path} | {info}")
                 
-                cv2.imshow("Stitch Measurement", annotated)
+                if SHOW_WINDOWS:
+                    cv2.imshow("Stitch Measurement", annotated)
                 last_inference_time = current_time
                 frame_count += 1
             else:
-                cv2.imshow("Stitch Measurement", frame)
+                if SHOW_WINDOWS:
+                    cv2.imshow("Stitch Measurement", frame)
             
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break

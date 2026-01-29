@@ -111,7 +111,7 @@ def main():
     print("\n" + "="*60)
     print("🎯 SYSTEM READY - Starting measurements")
     print("="*60)
-    print("Press 'q' to quit | Press 'r' to reset stitch count")
+    print("Press 'q' to quit")
     print("="*60 + "\n")
     
     # Step 3: Main measurement loop
@@ -185,12 +185,14 @@ def main():
                 save_path = os.path.join(SAVE_DIR, f"frame_{frame_count:05d}_{timestamp}.jpg")
                 cv2.imwrite(save_path, annotated)
                 
-                cv2.imshow("Stitch Measurement System", annotated)
+                if SHOW_WINDOWS:
+                    cv2.imshow("Stitch Measurement System", annotated)
                 last_inference_time = current_time
                 frame_count += 1
             else:
                 # Display live feed without processing
-                cv2.imshow("Stitch Measurement System", frame)
+                if SHOW_WINDOWS:
+                    cv2.imshow("Stitch Measurement System", frame)
             
             # Handle keyboard input
             key = cv2.waitKey(1) & 0xFF
