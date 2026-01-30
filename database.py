@@ -35,11 +35,11 @@ class DatabaseHandler:
         """Create table if it doesn't exist"""
         create_table_query = f"""
         CREATE TABLE IF NOT EXISTS `{self.config['table']}` (
-            `time_stamp` DATETIME PRIMARY KEY,
-            `total_distance` FLOAT,
-            `stitch_length` FLOAT,
-            `top_distance` FLOAT,
-            `state` ENUM('IDLE', 'RUNNING') DEFAULT 'IDLE'
+            `id` BIGINT(20) AUTO_INCREMENT PRIMARY KEY,
+            `time_stamp` DATETIME(3) NOT NULL,
+            `stitch_length` DECIMAL(10,3),
+            `seam_allowance` DECIMAL(10,3),
+            `total_distance` DECIMAL(12,3)
         )
         """
         try:
@@ -53,41 +53,41 @@ class DatabaseHandler:
             return False
     
     def insert_measurement(self, total_distance, stitch_length
-                           , top_distance, state=STATE_RUNNING):
+                           , seam_allowance):
         """
         Insert a measurement record into the database
         
         Args:
             total_distance: Total fabric length in mm (stitch_count * stitch_length)
             stitch_length: Stitch width in mm (float)
-            top_distance: Distance from top edge in mm (seam_length)
-            state: Machine state ('IDLE' or 'RUNNING')
+            seam_allowance: Distance from top edge in mm (seam_length)
+      
         """
         if not self.connection or not self.connection.is_connected():
             if not self.connect():
                 return False
         
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] #millisecond precision
         
         insert_query = f"""
         INSERT INTO `{self.config['table']}` 
-        (`time_stamp`, `total_distance`, `stitch_length`, `top_distance`, `state`)
-        VALUES (%s, %s, %s, %s, %s)
+        (`timestamp`, `stitch_length`, `seam_allowance`, `total_distance`)
+        VALUES (%s, %s, %s, %s)
         """
         
         try:
             self.cursor.execute(insert_query, (
                 timestamp,
-                float(total_distance),
                 float(stitch_length),
-                float(top_distance),
-                state
+                float(seam_allowance),
+                float(total_distance),
+
             ))
             self.connection.commit()
             
             if LOG_DEBUG:
                 print(f"📊 DB Insert: time={timestamp}, total={total_distance:.2f}mm, "
-                      f"length={stitch_length}, seam={top_distance:.2f}mm, state={state}")
+                      f"length={stitch_length}, seam={seam_allowance:.2f}mm")
             return True
             
         except mysql.connector.Error as e:
@@ -95,44 +95,6 @@ class DatabaseHandler:
             self.connection.rollback()
             return False
     
-    # def insert_measurement_batch(self, measurements):
-    #     """
-    #     Insert multiple measurements at once
-        
-    #     Args:
-    #         measurements: List of tuples (total_distance, stitch_length, top_distance, state)
-    #     """
-    #     if not self.connection or not self.connection.is_connected():
-    #         if not self.connect():
-    #             return False
-        
-    #     insert_query = f"""
-    #     INSERT INTO `{self.config['table']}` 
-    #     (`time_stamp`, `total_distance`, `stitch_length`, `top_distance`, `state`)
-    #     VALUES (%s, %s, %s, %s, %s)
-    #     """
-        
-    #     data = []
-    #     for m in measurements:
-    #         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    #         data.append((
-    #             timestamp,
-    #             float(m[0]),
-    #             int(m[1]),
-    #             float(m[2]),
-    #             m[3] if len(m) > 3 else STATE_RUNNING
-    #         ))
-        
-    #     try:
-    #         self.cursor.executemany(insert_query, data)
-    #         self.connection.commit()
-    #         if LOG_DEBUG:
-    #             print(f"📊 Inserted {len(data)} records to database")
-    #         return True
-    #     except mysql.connector.Error as e:
-    #         print(f"❌ Batch insert failed: {e}")
-    #         self.connection.rollback()
-    #         return False
     
     def get_latest_measurement(self):
         """Retrieve the most recent measurement"""
@@ -141,9 +103,9 @@ class DatabaseHandler:
                 return None
         
         query = f"""
-        SELECT `time_stamp`, `total_distance`, `stitch_length`, `top_distance`, `state`
+        SELECT `id`, `timestamp`, `stitch_length`, `seam_allowance`, `total_distance`
         FROM `{self.config['table']}`
-        ORDER BY `time_stamp` DESC
+        ORDER BY `timestamp` DESC
         LIMIT 1
         """
         
@@ -152,11 +114,11 @@ class DatabaseHandler:
             result = self.cursor.fetchone()
             if result:
                 return {
-                    'timestamp': result[0],
-                    'total_distance': result[1],
+                    'id': result[0],
+                    'timestamp': result[1],
                     'stitch_length': result[2],
-                    'top_distance': result[3],
-                    'state': result[4]
+                    'seam_allowance': result[3],
+                    'total_distance': result[4],
                 }
             return None
         except mysql.connector.Error as e:
@@ -171,7 +133,7 @@ class DatabaseHandler:
         
         delete_query = f"""
         DELETE FROM `{self.config['table']}`
-        WHERE `time_stamp` = %s
+        WHERE `timestamp` = %s
         """
         
         try:
@@ -196,7 +158,7 @@ class DatabaseHandler:
     
     def __enter__(self):
         self.connect()
-        self.ensure_table_exists()
+        # self.ensure_table_exists() tables are already created uncomment this if the tabels are not created
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -211,9 +173,9 @@ if __name__ == "__main__":
         # Test insert
         success = db.insert_measurement(
             total_distance=250.5,
-            stitch_length=10,
-            top_distance=25.05,
-            state=STATE_RUNNING
+            stitch_length=5.0,
+            seam_allowance=15.0
+
         )
         
         if success:
