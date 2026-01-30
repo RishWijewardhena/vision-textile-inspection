@@ -1,5 +1,5 @@
 Main/
 __pycache__/
-.env/
+.env
 saved_annotations/
 test.py
