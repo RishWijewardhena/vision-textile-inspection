@@ -161,8 +161,7 @@ def main():
                         db.insert_measurement(
                             total_distance=total_distance_mm,
                             stitch_length=stitch_width_mm,
-                            top_distance=seam_length_mm,
-                            state=STATE_RUNNING
+                            seam_allowance=seam_length_mm,
                         )
                     
                     # Display info on frame
