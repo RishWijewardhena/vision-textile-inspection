@@ -17,7 +17,7 @@ from file_cleaner import FileCleanerThread
 
 
 def run_startup_calibration():
-    """Run extrinsic calibration at startup"""
+    """Run extrinsic calibration at startup  """
     print("\n" + "="*60)
     print("SYSTEM STARTUP - EXTRINSIC CALIBRATION")
     print("="*60)
