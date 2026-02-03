@@ -4,6 +4,7 @@ Configuration file for stitch measurement system
 import cv2
 import os
 from dotenv import load_dotenv
+from hardware_utils import find_esp32 ,find_camera
 
 # Load environment variables from .env file
 load_dotenv()
@@ -26,7 +27,11 @@ CAPTURE_DELAY = 5  # seconds before auto-capture in extrinsic calibration
 # Camera Settings
 # -------------------------
 # CAMERA_INDEX = 1
-CAMERA_INDEX="/dev/video0"
+
+#Get the available camera matrix
+
+
+CAMERA_INDEX=find_camera()
 CALIB_W = 1280
 CALIB_H = 960
 CAMERA_AUTO_EXPOSURE = 3  # V4L2: 1 = manual, 3 = auto
@@ -56,7 +61,8 @@ SKIP_CLUSTER = False      # if True, don't try to cluster into 2 stitch lines
 # Serial Communication
 # -------------------------
 # SERIAL_PORT = "COM4"
-SERIAL_PORT = os.getenv('SERIAL_PORT', '/dev/ttyACM0')
+#SERIAL_PORT = os.getenv('SERIAL_PORT', '/dev/ttyACM0')
+SERIAL_PORT=find_esp32()
 SERIAL_BAUDRATE = 115200
 SERIAL_TIMEOUT = 1.0
 
