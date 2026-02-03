@@ -178,70 +178,104 @@ set -euo pipefail
 
 PROJECT_DIR="$PROJECT_DIR"
 VENV_DIR="$VENV_DIR"
-ENV_FILE="\$PROJECT_DIR/.env"
+ENV_FILE="$PROJECT_DIR/.env"
 BRANCH="$BRANCH"
 
-cd "\$PROJECT_DIR" || exit 1
+LOG_DIR="$PROJECT_DIR/logs"
+LOG_FILE="$LOG_DIR/auto_runner.log"
+
+mkdir -p "$LOG_DIR"
+touch "$LOG_FILE"
+
+# Redirect all output to both console and the single log file
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "======================================="
+echo "Auto runner started at $(date)"
+echo "======================================="
+
+cd "$PROJECT_DIR" || exit 1
 
 # Load .env if present
-if [ -f "\$ENV_FILE" ]; then
+if [ -f "$ENV_FILE" ]; then
   set -a
-  source "\$ENV_FILE"
+  source "$ENV_FILE"
   set +a
 fi
 
-RECEIVE_UPDATES="\${RECEIVE_UPDATES:-false}"
+RECEIVE_UPDATES="${RECEIVE_UPDATES:-false}"
 
-if [ "\$RECEIVE_UPDATES" = "true" ]; then
-  echo "🔄 Updates enabled. Checking for updates on \$BRANCH..."
+echo "Git remote URL: $(git config --get remote.origin.url || echo 'unknown')"
+echo "Current branch: $(git branch --show-current || echo 'unknown')"
+echo "Current commit: $(git rev-parse HEAD 2>/dev/null || echo 'unknown')"
+echo "Current commit message: $(git log -1 --pretty=%B 2>/dev/null || echo 'unknown')"
+
+if [ "$RECEIVE_UPDATES" = "true" ]; then
+  echo "Updates enabled. Checking for updates on $BRANCH..."
 
   # Fetch with error handling
-  if ! git fetch origin "\$BRANCH" 2>/dev/null; then
-    echo "❌ Failed to fetch updates. Continuing with current version."
+  if ! git fetch origin "$BRANCH" 2>/dev/null; then
+    echo "Failed to fetch updates. Continuing with current version."
   else
+    echo "Fetch successful."
+
     # Ensure branch exists
-    if ! git show-ref --verify --quiet "refs/heads/\$BRANCH"; then
-      git checkout -b "\$BRANCH" "origin/\$BRANCH"
+    if ! git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+      echo "Branch $BRANCH does not exist locally. Creating from origin."
+      git checkout -b "$BRANCH" "origin/$BRANCH"
     else
-      git checkout "\$BRANCH"
+      git checkout "$BRANCH"
     fi
 
-    LOCAL_HASH=\$(git rev-parse "\$BRANCH")
-    REMOTE_HASH=\$(git rev-parse "origin/\$BRANCH")
+    LOCAL_HASH=$(git rev-parse "$BRANCH")
+    REMOTE_HASH=$(git rev-parse "origin/$BRANCH")
 
-    if [ "\$LOCAL_HASH" != "\$REMOTE_HASH" ]; then
-      echo "⬇️ New updates found. Pulling..."
+    echo "Local hash: $LOCAL_HASH"
+    echo "Remote hash: $REMOTE_HASH"
+
+    if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
+      echo "New updates found."
 
       # Check what changed BEFORE pulling
-      CHANGED_FILES=\$(git diff --name-only "\$LOCAL_HASH" "\$REMOTE_HASH")
+      CHANGED_FILES=$(git diff --name-only "$LOCAL_HASH" "$REMOTE_HASH")
+      echo "Changed files:"
+      echo "$CHANGED_FILES"
 
       # Pull updates
-      if ! git pull --ff-only origin "\$BRANCH"; then
-        git reset --hard "origin/\$BRANCH"
+      if git pull --ff-only origin "$BRANCH"; then
+        echo "Pull successful."
+      else
+        echo "Fast-forward pull failed. Resetting hard to origin/$BRANCH"
+        git reset --hard "origin/$BRANCH"
+        echo "Reset complete."
       fi
 
+      echo "New commit: $(git rev-parse HEAD)"
+      echo "New commit message: $(git log -1 --pretty=%B)"
+
       # Check if requirements.txt changed
-      if echo "\$CHANGED_FILES" | grep -q '^requirements.txt$'; then
-        echo "📦 requirements.txt changed. Installing dependencies..."
-        "\$VENV_DIR/bin/pip" install --upgrade pip
-        "\$VENV_DIR/bin/pip" install -r "\$PROJECT_DIR/requirements.txt"
+      if echo "$CHANGED_FILES" | grep -q '^requirements.txt$'; then
+        echo "requirements.txt changed. Installing dependencies..."
+        "$VENV_DIR/bin/pip" install --upgrade pip
+        "$VENV_DIR/bin/pip" install -r "$PROJECT_DIR/requirements.txt"
       else
-        echo "✅ No dependency changes."
+        echo "No dependency changes."
       fi
     else
-      echo "✅ No updates available."
+      echo "No updates available."
     fi
   fi
 else
-  echo "⏭️ Updates disabled. Skipping update check."
+  echo "Updates disabled. Skipping update check."
 fi
 
 # Run the app
-if [ -x "\$VENV_DIR/bin/python" ]; then
-  exec "\$VENV_DIR/bin/python" "\$PROJECT_DIR/main.py"
+if [ -x "$VENV_DIR/bin/python" ]; then
+  exec "$VENV_DIR/bin/python" "$PROJECT_DIR/main.py"
 else
-  exec /usr/bin/python3 "\$PROJECT_DIR/main.py"
+  exec /usr/bin/python3 "$PROJECT_DIR/main.py"
 fi
+
 EOF
 
 chown "$TARGET_USER":"$TARGET_USER" "$AUTO_RUNNER"
