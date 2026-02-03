@@ -2,72 +2,142 @@
 set -euo pipefail
 
 # --------------------------
-# auto_run.sh installer (self-locating)
+# auto_run.sh installer (FIXED VERSION)
 # --------------------------
 
-# Determine the directory where THIS script is located
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$SCRIPT_DIR"
+# Determine target user FIRST (before anything else)
+if [ "$EUID" -ne 0 ]; then
+  echo "ERROR: Please run as root (sudo). Some steps require sudo."
+  echo "Usage: sudo bash $0"
+  exit 1
+fi
+
+TARGET_USER="${SUDO_USER:-$USER}"
+HOME_DIR=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+
+# Validate that we have a valid home directory
+if [ -z "$HOME_DIR" ] || [ ! -d "$HOME_DIR" ]; then
+  echo "ERROR: Could not determine home directory for user $TARGET_USER"
+  exit 1
+fi
+
+PROJECT_DIR="$HOME_DIR/Desktop/THREAD"
 VENV_DIR="$PROJECT_DIR/venv"
 AUTO_RUNNER="$PROJECT_DIR/auto_runner.sh"
 SERVICE_PATH="/etc/systemd/system/Thread.service"
+REPO_URL="https://github.com/RishWijewardhena/vision-textile-inspection.git"
+SOURCE_ENV="$(dirname "$(readlink -f "$0")")/.env"
+BRANCH="main"
 
-# Determine target user
-TARGET_USER="${SUDO_USER:-$USER}"
-HOME_DIR="$(eval echo "~$TARGET_USER")"
-
-echo "Installer running as: $(whoami)"
+echo "=========================================="
+echo "Thread Installer"
+echo "=========================================="
+echo "Running as: $(whoami)"
 echo "Target user: $TARGET_USER"
-echo "Project dir (from script location): $PROJECT_DIR"
+echo "Home directory: $HOME_DIR"
+echo "Project directory: $PROJECT_DIR"
+echo "=========================================="
+echo
 
 # --------------------------
 # 1) Install system packages
 # --------------------------
-echo
-echo "==> Installing required system packages (python3-venv, pip, acpid ,git)..."
-sudo apt update
-sudo apt install -y python3-venv python3-pip acpid git
-
+echo "==> Installing required system packages..."
+apt update
+apt install -y python3-venv python3-pip acpid git
 
 # --------------------------
-# 2) Add user to dialout
+# 2) Add user to dialout group
 # --------------------------
 echo
 echo "==> Adding user '$TARGET_USER' to group 'dialout' for serial/USB access..."
-sudo usermod -a -G dialout "$TARGET_USER" || true
-echo "Note: user must log out and log back in (or reboot) for group change to take effect."
+usermod -a -G dialout "$TARGET_USER" || true
+echo "Note: User must log out and log back in (or reboot) for group change to take effect."
 
 # --------------------------
-# 3) Ensure project dir exists
+# 3) Create project directory
 # --------------------------
-if [ ! -d "$PROJECT_DIR" ]; then
-  echo "Project directory $PROJECT_DIR not found. Creating it."
-  mkdir -p "$PROJECT_DIR"
-fi
+echo
+echo "==> Setting up project directory: $PROJECT_DIR"
+mkdir -p "$PROJECT_DIR"
 
 # --------------------------
-# 3.1) Clone or update GitHub repo
+# 4) Clone or update GitHub repo
 # --------------------------
 echo
 echo "==> Cloning/updating GitHub repository..."
 
 if [ -d "$PROJECT_DIR/.git" ]; then
-    echo "Repository already exists, pulling latest changes from main..."
-    git -C "$PROJECT_DIR" fetch origin main
-    git -C "$PROJECT_DIR" reset --hard origin/main
+    # Case 1: Git repo exists - update it
+    echo "Repository exists — updating..."
+    chown -R "$TARGET_USER":"$TARGET_USER" "$PROJECT_DIR"
+    cd "$PROJECT_DIR"
+    sudo -u "$TARGET_USER" git fetch origin "$BRANCH"
+    sudo -u "$TARGET_USER" git reset --hard "origin/$BRANCH"
+    
 else
-    echo "Cloning repository from GitHub..."
-    git clone --branch main https://github.com/RishWijewardhena/vision-textile-inspection.git "$PROJECT_DIR"
+    # Case 2: Not a git repo or doesn't exist
+    if [ -d "$PROJECT_DIR" ]; then
+        echo "Removing existing non-git directory..."
+        rm -rf "${PROJECT_DIR:?}"
+    fi
+    
+    echo "Cloning repository..."
+    sudo -u "$TARGET_USER" git clone --branch "$BRANCH" "$REPO_URL" "$PROJECT_DIR"
 fi
 
+# Ensure correct ownership
+chown -R "$TARGET_USER":"$TARGET_USER" "$PROJECT_DIR"
+
+echo "Repository ready at: $PROJECT_DIR"
+
 
 # --------------------------
-# 4) Create virtualenv & install requirements
+# 5) Copy .env file
 # --------------------------
 echo
-echo "==> Creating virtual environment (if missing) and installing requirements..."
+echo "==> Copying .env file (if available)..."
+
+ENV_FILE="$PROJECT_DIR/.env"
+
+if [ ! -f "$ENV_FILE" ]; then
+  if [ -f "$SOURCE_ENV" ]; then
+    cp "$SOURCE_ENV" "$ENV_FILE"
+    echo "Copied .env to project directory: $ENV_FILE"
+    chown "$TARGET_USER":"$TARGET_USER" "$ENV_FILE"
+  else
+    echo "WARNING: No .env file found at $SOURCE_ENV"
+    echo "Creating a default .env file..."
+    cat > "$ENV_FILE" <<'DEFAULTENV'
+# Default configuration
+RECEIVE_UPDATES=false
+DEFAULTENV
+    chown "$TARGET_USER":"$TARGET_USER" "$ENV_FILE"
+  fi
+else
+  echo ".env already exists. Skipping copy."
+fi
+
+# Get the value for RECEIVE_UPDATES variable
+if [ -f "$ENV_FILE" ]; then
+    RECEIVE_UPDATES=$(grep -E '^RECEIVE_UPDATES=' "$ENV_FILE" | cut -d '=' -f2- | tr -d ' "' || echo "false")
+else
+    RECEIVE_UPDATES="false"
+fi
+
+echo "RECEIVE_UPDATES set to: $RECEIVE_UPDATES"
+
+# Ensure correct ownership
+chown -R "$TARGET_USER":"$TARGET_USER" "$PROJECT_DIR"
+
+# --------------------------
+# 6) Create virtualenv & install requirements
+# --------------------------
+echo
+echo "==> Creating virtual environment and installing requirements..."
+
 if [ ! -d "$VENV_DIR" ]; then
-  python3 -m venv "$VENV_DIR"
+  sudo -u "$TARGET_USER" python3 -m venv "$VENV_DIR"
   echo "Virtual environment created at $VENV_DIR"
 else
   echo "Virtual environment already exists at $VENV_DIR"
@@ -75,73 +145,138 @@ fi
 
 if [ -f "$PROJECT_DIR/requirements.txt" ]; then
   echo "Installing pip packages from requirements.txt..."
-  "$VENV_DIR/bin/pip" install --upgrade pip
-  "$VENV_DIR/bin/pip" install -r "$PROJECT_DIR/requirements.txt"
+  sudo -u "$TARGET_USER" "$VENV_DIR/bin/pip" install --upgrade pip
+  sudo -u "$TARGET_USER" "$VENV_DIR/bin/pip" install -r "$PROJECT_DIR/requirements.txt"
   echo "Dependencies installed into venv."
 else
-  echo "No requirements.txt found — skipping pip install."
+  echo "WARNING: No requirements.txt found — skipping pip install."
 fi
 
 # --------------------------
-# 5) Configure ACPI power button
+# 7) Configure ACPI power button
 # --------------------------
 echo
 echo "==> Configuring ACPI power button to shut down the system..."
-sudo tee /etc/acpi/events/powerbtn > /dev/null <<'ACPI_RULE'
+tee /etc/acpi/events/powerbtn > /dev/null <<'ACPI_RULE'
 event=button/power
 action=/usr/sbin/poweroff
 ACPI_RULE
 
-sudo systemctl restart acpid
-sudo systemctl enable acpid
+systemctl restart acpid
+systemctl enable acpid
 echo "ACPI configured and acpid restarted."
 
 # --------------------------
-# 6) Create auto_runner.sh
+# 8) Create auto_runner.sh
 # --------------------------
 echo
 echo "==> Creating helper runner script: $AUTO_RUNNER"
 
-sudo tee "$AUTO_RUNNER" > /dev/null <<EOF
+tee "$AUTO_RUNNER" > /dev/null <<EOF
 #!/bin/bash
 set -euo pipefail
 
 PROJECT_DIR="$PROJECT_DIR"
 VENV_DIR="$VENV_DIR"
+ENV_FILE="\$PROJECT_DIR/.env"
+BRANCH="$BRANCH"
 
 cd "\$PROJECT_DIR" || exit 1
 
-if [ -x "\$VENV_DIR/bin/python" ]; then
-    exec "\$VENV_DIR/bin/python" "\$PROJECT_DIR/main.py"
+# Load .env if present
+if [ -f "\$ENV_FILE" ]; then
+  set -a
+  source "\$ENV_FILE"
+  set +a
+fi
+
+RECEIVE_UPDATES="\${RECEIVE_UPDATES:-false}"
+
+if [ "\$RECEIVE_UPDATES" = "true" ]; then
+  echo "🔄 Updates enabled. Checking for updates on \$BRANCH..."
+
+  # Fetch with error handling
+  if ! git fetch origin "\$BRANCH" 2>/dev/null; then
+    echo "❌ Failed to fetch updates. Continuing with current version."
+  else
+    # Ensure branch exists
+    if ! git show-ref --verify --quiet "refs/heads/\$BRANCH"; then
+      git checkout -b "\$BRANCH" "origin/\$BRANCH"
+    else
+      git checkout "\$BRANCH"
+    fi
+
+    LOCAL_HASH=\$(git rev-parse "\$BRANCH")
+    REMOTE_HASH=\$(git rev-parse "origin/\$BRANCH")
+
+    if [ "\$LOCAL_HASH" != "\$REMOTE_HASH" ]; then
+      echo "⬇️ New updates found. Pulling..."
+
+      # Check what changed BEFORE pulling
+      CHANGED_FILES=\$(git diff --name-only "\$LOCAL_HASH" "\$REMOTE_HASH")
+
+      # Pull updates
+      if ! git pull --ff-only origin "\$BRANCH"; then
+        git reset --hard "origin/\$BRANCH"
+      fi
+
+      # Check if requirements.txt changed
+      if echo "\$CHANGED_FILES" | grep -q '^requirements.txt$'; then
+        echo "📦 requirements.txt changed. Installing dependencies..."
+        "\$VENV_DIR/bin/pip" install --upgrade pip
+        "\$VENV_DIR/bin/pip" install -r "\$PROJECT_DIR/requirements.txt"
+      else
+        echo "✅ No dependency changes."
+      fi
+    else
+      echo "✅ No updates available."
+    fi
+  fi
 else
-    exec /usr/bin/python3 "\$PROJECT_DIR/main.py"
+  echo "⏭️ Updates disabled. Skipping update check."
+fi
+
+# Run the app
+if [ -x "\$VENV_DIR/bin/python" ]; then
+  exec "\$VENV_DIR/bin/python" "\$PROJECT_DIR/main.py"
+else
+  exec /usr/bin/python3 "\$PROJECT_DIR/main.py"
 fi
 EOF
 
-sudo chown "$TARGET_USER":"$TARGET_USER" "$AUTO_RUNNER"
-sudo chmod +x "$AUTO_RUNNER"
+chown "$TARGET_USER":"$TARGET_USER" "$AUTO_RUNNER"
+chmod +x "$AUTO_RUNNER"
+echo "auto_runner.sh created and set executable."
+
+chown "$TARGET_USER":"$TARGET_USER" "$AUTO_RUNNER"
+chmod +x "$AUTO_RUNNER"
 echo "auto_runner.sh created and set executable."
 
 # --------------------------
-# 7) Create systemd service file
+# 9) Create systemd service file
 # --------------------------
 echo
 echo "==> Creating systemd service: $SERVICE_PATH"
 
-sudo tee "$SERVICE_PATH" > /dev/null <<SERVICE_UNIT
+tee "$SERVICE_PATH" > /dev/null <<SERVICE_UNIT
 [Unit]
 Description=Run Thread main script at boot
-After=network.target 
-Requires=dev-video0.device
+After=network-online.target
+Wants=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
+Type=simple
 User=$TARGET_USER
+Group=$TARGET_USER
 WorkingDirectory=$PROJECT_DIR
 ExecStart=$AUTO_RUNNER
 Restart=on-failure
-RestartSec=1
-# For GUI (NOT recommended for system services):
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment variables (uncomment if GUI needed)
 # Environment=DISPLAY=:0
 # Environment=XAUTHORITY=$HOME_DIR/.Xauthority
 
@@ -149,28 +284,47 @@ RestartSec=1
 WantedBy=multi-user.target
 SERVICE_UNIT
 
-sudo chmod 644 "$SERVICE_PATH"
+chmod 644 "$SERVICE_PATH"
 echo "Service file written."
 
 # --------------------------
-# 8) Reload systemd and start service
+# 10) Reload systemd and enable service
 # --------------------------
 echo
-echo "==> Reloading systemd, enabling and starting Thread.service..."
-sudo systemctl daemon-reload
-sudo systemctl enable Thread.service
-# sudo systemctl restart Thread.service ket user to modify the .env file 
+echo "==> Reloading systemd and enabling Thread.service..."
+systemctl daemon-reload
+systemctl enable Thread.service
+
+# --------------------------
+# 11) Force Xorg (disable Wayland for AnyDesk compatibility)
+# --------------------------
+echo
+echo "==> Disabling Wayland to force Xorg (for AnyDesk)..."
+
+if [ -f /etc/gdm3/custom.conf ]; then
+    sed -i 's/^#WaylandEnable=false/WaylandEnable=false/' /etc/gdm3/custom.conf
+    sed -i 's/^WaylandEnable=true/WaylandEnable=false/' /etc/gdm3/custom.conf
+    echo "Wayland disabled in /etc/gdm3/custom.conf"
+else
+    echo "WARNING: /etc/gdm3/custom.conf not found. Skipping Wayland disable."
+fi
+
+echo "A reboot is required for this change to take effect."
+
 
 echo
-echo "==> Current service status:"
-sudo systemctl status Thread.service --no-pager
-
+echo "=========================================="
+echo "Setup Complete!"
+echo "=========================================="
 echo
-echo "Setup complete."
+echo "Next steps:"
+echo "1. Review/modify the .env file at: $ENV_FILE"
+echo "2. Start the service: sudo systemctl start Thread.service"
+echo "3. Check status: sudo systemctl status Thread.service"
+echo "4. View logs: sudo journalctl -u Thread.service -f"
+echo
 echo "Notes:"
-echo " - Reboot or log out/in for dialout permissions to apply."
-echo " - cv2.imshow() will NOT display from a systemd service."
-echo "   Run manually or use desktop autostart if GUI is required."
-
-echo "modify the .env file  before restart ........"
-
+echo " - Reboot or log out/in for dialout permissions to apply"
+echo " - cv2.imshow() will NOT work from systemd service"
+echo " - Service will auto-start on next boot"
+echo "=========================================="
