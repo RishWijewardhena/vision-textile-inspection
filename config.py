@@ -62,7 +62,7 @@ SKIP_CLUSTER = False      # if True, don't try to cluster into 2 stitch lines
 # -------------------------
 # SERIAL_PORT = "COM4"
 #SERIAL_PORT = os.getenv('SERIAL_PORT', '/dev/ttyACM0')
-SERIAL_PORT=find_esp32()
+SERIAL_PORT=find_esp32() if find_esp32() is not None else os.getenv('SERIAL_PORT', '/dev/ttyACM0')
 SERIAL_BAUDRATE = 115200
 SERIAL_TIMEOUT = 1.0
 
