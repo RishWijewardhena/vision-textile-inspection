@@ -14,12 +14,19 @@ load_dotenv()
 # -------------------------
 INTRINSICS_FILE = "camera_calibration.json"
 EXTRINSICS_FILE = "extrinsics.json"
-# DICT_TYPE = cv2.aruco.DICT_5X5_50
-DICT_TYPE = cv2.aruco.DICT_5X5_250
+
+# DICT_TYPE = cv2.aruco.DICT_5X5_250
+# SQUARES_X = 5 # number of squares in X direction    old setup
+# SQUARES_Y = 7 # number of squares in Y direction
+# SQUARE_LENGTH = 0.01  # meters (adjust as needed)
+# MARKER_LENGTH = 0.007   # meters (adjust as needed)
+# MIN_CHARUCO_CORNERS = 6 #as per the openCV documentation
+
+DICT_TYPE = cv2.aruco.DICT_4X4_50
 SQUARES_X = 5 # number of squares in X direction
-SQUARES_Y = 7 # number of squares in Y direction
-SQUARE_LENGTH = 0.01  # meters (adjust as needed)
-MARKER_LENGTH = 0.007   # meters (adjust as needed)
+SQUARES_Y = 6 # number of squares in Y direction
+SQUARE_LENGTH = 0.010 # meters (adjust as needed)
+MARKER_LENGTH = 0.008   # meters (adjust as needed)
 MIN_CHARUCO_CORNERS = 6 #as per the openCV documentation
 CAPTURE_DELAY = 5  # seconds before auto-capture in extrinsic calibration
 
