@@ -1,0 +1,18 @@
+sudo systemctl stop Thread.service  #to stop the service
+
+
+
+systemctl status Thread.service     #to check the status
+
+
+sudo journalctl -u Thread.service    #recent logs
+
+
+
+sudo systemctl start Thread.service     #activate the service again
+
+
+sudo systemctl enable Thread.service   #enable at boot
+
+
+sudo systemctl disable Thread.service   #disable at boot
