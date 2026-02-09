@@ -14,5 +14,7 @@ sudo systemctl start Thread.service     #activate the service again
 
 sudo systemctl enable Thread.service   #enable at boot
 
+#use for run the calibration UI
+sudo apt update && sudo apt install -y libxcb-cursor0 && chmod +x ./ChArUco_Calibration
 
-sudo systemctl disable Thread.service   #disable at boot
+
