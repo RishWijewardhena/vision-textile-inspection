@@ -102,7 +102,7 @@ STATE_RUNNING = 'RUNNING'
 # file cleaner 
 # ------------------------
 # Delete after 24 hours, check every hour
-FILE_RETENTION_HOURS = 2
+FILE_RETENTION_HOURS = 24
 FILE_CLEANUP_INTERVAL_SECONDS = 3600
 
 # -------------------------
