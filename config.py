@@ -74,15 +74,21 @@ SERIAL_BAUDRATE = 115200
 SERIAL_TIMEOUT = 1.0
 
 # -------------------------
-# Database Config
+# Database Config  ensuring these are set in .env file or handled gracefully
 # -------------------------
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'localhost'),
-    'user': os.getenv('DB_USER', 'root'),
-    'password': os.getenv('DB_PASSWORD', ''),
-    'database': os.getenv('DB_DATABASE', 'thread'),
-    'table': os.getenv('DB_TABLE', 'machine_test')
+    'host': os.getenv('DB_HOST'),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD'),
+    'database': os.getenv('DB_DATABASE'),
+    'table': os.getenv('DB_TABLE')
 }
+# Validate all required configs
+required_keys = ['host', 'user', 'password', 'database', 'table']
+missing = [key for key, value in DB_CONFIG.items() if value is None]
+
+if missing:
+    raise ValueError(f"Missing required environment variables: {', '.join(missing).upper()}")
 
 # -------------------------
 # Application Settings
@@ -94,8 +100,8 @@ LOG_DEBUG = True          # set True to print debug info
 # -------------------------
 # Machine State
 # -------------------------
-STATE_IDLE = 'IDLE'
-STATE_RUNNING = 'RUNNING'
+# STATE_IDLE = 'IDLE'
+# STATE_RUNNING = 'RUNNING'
 
 
 # -------------------------
@@ -109,3 +115,17 @@ FILE_CLEANUP_INTERVAL_SECONDS = 3600
 # Activate live imshow windows
 # -------------------------
 SHOW_WINDOWS = False
+
+# -------------------------
+# MQTT Config (Heartbeat)
+# -------------------------
+MQTT_SERVER = os.getenv("MQTT_SERVER")
+MQTT_PORT = int(os.getenv("MQTT_PORT"))
+MQTT_USERNAME = os.getenv("MQTT_USERNAME")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
+
+# device id = DB_TABLE (as you specified)
+DEVICE_ID = DB_CONFIG["table"]
+MQTT_HEARTBEAT_TOPIC = f"machine/{DEVICE_ID}/status/heartbeat"
+MQTT_HEARTBEAT_INTERVAL = 2.0  # seconds
+MQTT_TLS_INSECURE="true"
