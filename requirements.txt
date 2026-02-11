@@ -33,6 +33,7 @@ nvidia-nvtx-cu12==12.8.90
 opencv-contrib-python==4.11.0.86
 opencv-python==4.13.0.90
 packaging==25.0
+paho-mqtt==2.1.0
 pillow==12.1.0
 polars==1.37.1
 polars-runtime-32==1.37.1
