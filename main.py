@@ -15,6 +15,9 @@ from database import DatabaseHandler
 from measurement import StitchMeasurementApp   
 from file_cleaner import FileCleanerThread
 
+# MQTT heartbeat thread (create this file: mqtt_heartbeat.py)
+from mqtt_heartbeat import MqttHeartbeat
+
 
 def run_startup_calibration():
     """Run extrinsic calibration at startup  """
@@ -106,6 +109,27 @@ def main():
     #initialize file cleaner
     file_cleaner=FileCleanerThread()
     file_cleaner.start()
+
+
+    # Initialize MQTT heartbeat
+    heartbeat = None
+    try:
+        # Use MQTT constants from config.py if you added them,
+
+        heartbeat = MqttHeartbeat(
+            broker=MQTT_SERVER,
+            port=MQTT_PORT,
+            username=MQTT_USERNAME,
+            password=MQTT_PASSWORD,
+            topic=MQTT_HEARTBEAT_TOPIC,
+            interval_sec=MQTT_HEARTBEAT_INTERVAL,
+            tls_insecure=MQTT_TLS_INSECURE,
+        )
+        heartbeat.start()
+        print(f"✅ MQTT heartbeat started: {MQTT_HEARTBEAT_TOPIC} (every {MQTT_HEARTBEAT_INTERVAL}s)")
+    except Exception as e:
+        print(f"⚠️ MQTT heartbeat not started: {e} (continuing without heartbeat)")
+
 
 
     print("\n" + "="*60)
