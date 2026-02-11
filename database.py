@@ -3,7 +3,7 @@ Database operations module for storing measurements
 """
 import mysql.connector
 from datetime import datetime
-from config import DB_CONFIG, STATE_IDLE, STATE_RUNNING, LOG_DEBUG
+from config import DB_CONFIG, LOG_DEBUG
 
 
 class DatabaseHandler:
