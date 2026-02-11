@@ -44,7 +44,7 @@ echo
 # --------------------------
 echo "==> Installing required system packages..."
 apt update
-apt install -y python3-venv python3-pip acpid git
+apt install -y python3-venv python3-pip acpid git -y curl
 
 # --------------------------
 # 2) Add user to dialout group
@@ -119,10 +119,12 @@ else
 fi
 
 # Get the value for RECEIVE_UPDATES variable
+# Set default first to prevent unbound variable error
+RECEIVE_UPDATES="true"
+
 if [ -f "$ENV_FILE" ]; then
-    RECEIVE_UPDATES=$(grep -E '^RECEIVE_UPDATES=' "$ENV_FILE" | cut -d '=' -f2- | tr -d ' "' || echo "false")
-else
-    RECEIVE_UPDATES="false"
+    # Try to read from .env file, but use default if not found
+    RECEIVE_UPDATES=$(grep -E '^RECEIVE_UPDATES=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d ' "' || echo "false")
 fi
 
 echo "RECEIVE_UPDATES set to: $RECEIVE_UPDATES"
@@ -172,92 +174,98 @@ echo "ACPI configured and acpid restarted."
 echo
 echo "==> Creating helper runner script: $AUTO_RUNNER"
 
-tee "$AUTO_RUNNER" > /dev/null <<EOF
+ee "$AUTO_RUNNER" > /dev/null <<EOF
 #!/bin/bash
 set -euo pipefail
 
 PROJECT_DIR="$PROJECT_DIR"
 VENV_DIR="$VENV_DIR"
-ENV_FILE="$PROJECT_DIR/.env"
+ENV_FILE="\$PROJECT_DIR/.env"
 BRANCH="$BRANCH"
 
-LOG_DIR="$PROJECT_DIR/logs"
-LOG_FILE="$LOG_DIR/auto_runner.log"
+LOG_DIR="\$PROJECT_DIR/logs"
+# Daily log file
+TODAY=\$(date +%Y-%m-%d)
+LOG_FILE="\$LOG_DIR/auto_runner_\$TODAY.log"
 
-mkdir -p "$LOG_DIR"
-touch "$LOG_FILE"
+mkdir -p "\$LOG_DIR"
+touch "\$LOG_FILE"
 
-# Redirect all output to both console and the single log file
-exec > >(tee -a "$LOG_FILE") 2>&1
+# Redirect all output to both console and the daily log file
+exec > >(tee -a "\$LOG_FILE") 2>&1
 
 echo "======================================="
-echo "Auto runner started at $(date)"
+echo "Auto runner started at \$(date)"
 echo "======================================="
 
-cd "$PROJECT_DIR" || exit 1
+cd "\$PROJECT_DIR" || exit 1
 
 # Load .env if present
-if [ -f "$ENV_FILE" ]; then
+if [ -f "\$ENV_FILE" ]; then
   set -a
-  source "$ENV_FILE"
+  source "\$ENV_FILE"
   set +a
 fi
 
-RECEIVE_UPDATES="${RECEIVE_UPDATES:-false}"
+# Safe default (prevents unbound variable error)
+RECEIVE_UPDATES="\${RECEIVE_UPDATES:-true}"
 
-echo "Git remote URL: $(git config --get remote.origin.url || echo 'unknown')"
-echo "Current branch: $(git branch --show-current || echo 'unknown')"
-echo "Current commit: $(git rev-parse HEAD 2>/dev/null || echo 'unknown')"
-echo "Current commit message: $(git log -1 --pretty=%B 2>/dev/null || echo 'unknown')"
+echo "Git remote URL: \$(git config --get remote.origin.url || echo 'unknown')"
+echo "Current branch: \$(git branch --show-current || echo 'unknown')"
+echo "Current commit: \$(git rev-parse HEAD 2>/dev/null || echo 'unknown')"
+echo "Current commit message: \$(git log -1 --pretty=%B 2>/dev/null || echo 'unknown')"
 
-if [ "$RECEIVE_UPDATES" = "true" ]; then
-  echo "Updates enabled. Checking for updates on $BRANCH..."
+if [ "\$RECEIVE_UPDATES" = "true" ]; then
+  echo "Updates enabled. Checking for updates on \$BRANCH..."
 
   # Fetch with error handling
-  if ! git fetch origin "$BRANCH" 2>/dev/null; then
+  if ! git fetch origin "\$BRANCH" 2>/dev/null; then
     echo "Failed to fetch updates. Continuing with current version."
   else
     echo "Fetch successful."
 
     # Ensure branch exists
-    if ! git show-ref --verify --quiet "refs/heads/$BRANCH"; then
-      echo "Branch $BRANCH does not exist locally. Creating from origin."
-      git checkout -b "$BRANCH" "origin/$BRANCH"
+    if ! git show-ref --verify --quiet "refs/heads/\$BRANCH"; then
+      echo "Branch \$BRANCH does not exist locally. Creating from origin."
+      git checkout -b "\$BRANCH" "origin/\$BRANCH"
     else
-      git checkout "$BRANCH"
+      git checkout "\$BRANCH"
     fi
 
-    LOCAL_HASH=$(git rev-parse "$BRANCH")
-    REMOTE_HASH=$(git rev-parse "origin/$BRANCH")
+    LOCAL_HASH=\$(git rev-parse "\$BRANCH")
+    REMOTE_HASH=\$(git rev-parse "origin/\$BRANCH")
 
-    echo "Local hash: $LOCAL_HASH"
-    echo "Remote hash: $REMOTE_HASH"
+    echo "Local hash: \$LOCAL_HASH"
+    echo "Remote hash: \$REMOTE_HASH"
 
-    if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
+    if [ "\$LOCAL_HASH" != "\$REMOTE_HASH" ]; then
       echo "New updates found."
 
+      # Safe default
+      CHANGED_FILES=""
+
       # Check what changed BEFORE pulling
-      CHANGED_FILES=$(git diff --name-only "$LOCAL_HASH" "$REMOTE_HASH")
+      CHANGED_FILES=\$(git diff --name-only "\$LOCAL_HASH" "\$REMOTE_HASH" || true)
       echo "Changed files:"
-      echo "$CHANGED_FILES"
+      echo "\$CHANGED_FILES"
 
       # Pull updates
-      if git pull --ff-only origin "$BRANCH"; then
+      if git pull --ff-only origin "\$BRANCH"; then
         echo "Pull successful."
       else
-        echo "Fast-forward pull failed. Resetting hard to origin/$BRANCH"
-        git reset --hard "origin/$BRANCH"
+        echo "Fast-forward pull failed. Resetting hard to origin/\$BRANCH"
+        git reset --hard "origin/\$BRANCH"
         echo "Reset complete."
       fi
 
-      echo "New commit: $(git rev-parse HEAD)"
-      echo "New commit message: $(git log -1 --pretty=%B)"
+      echo "New commit: \$(git rev-parse HEAD)"
+      echo "New commit message: \$(git log -1 --pretty=%B)"
 
       # Check if requirements.txt changed
-      if echo "$CHANGED_FILES" | grep -q '^requirements.txt$'; then
+      if echo "\$CHANGED_FILES" | grep -q '^requirements.txt\$'; then
         echo "requirements.txt changed. Installing dependencies..."
-        "$VENV_DIR/bin/pip" install --upgrade pip
-        "$VENV_DIR/bin/pip" install -r "$PROJECT_DIR/requirements.txt"
+        "\$VENV_DIR/bin/pip" install --upgrade pip
+        "\$VENV_DIR/bin/pip" install -r "\$PROJECT_DIR/requirements.txt"
       else
         echo "No dependency changes."
       fi
@@ -270,13 +278,14 @@ else
 fi
 
 # Run the app
-if [ -x "$VENV_DIR/bin/python" ]; then
-  exec "$VENV_DIR/bin/python" "$PROJECT_DIR/main.py"
+if [ -x "\$VENV_DIR/bin/python" ]; then
+  exec "\$VENV_DIR/bin/python" "\$PROJECT_DIR/main.py"
 else
-  exec /usr/bin/python3 "$PROJECT_DIR/main.py"
+  exec /usr/bin/python3 "\$PROJECT_DIR/main.py"
 fi
 
 EOF
+	
 
 chown "$TARGET_USER":"$TARGET_USER" "$AUTO_RUNNER"
 chmod +x "$AUTO_RUNNER"
@@ -344,6 +353,38 @@ else
 fi
 
 echo "A reboot is required for this change to take effect."
+
+
+# --------------------------
+# 12) Download the calibration app
+# --------------------------
+
+#!/bin/bash
+
+REPO="RishWijewardhena/ChArUco-Calibration"
+ASSET_NAME="ChArUco_Calibration_Linux"
+API_URL="https://api.github.com/repos/$REPO/releases/latest"
+
+cd "$PROJECT_DIR" || exit 1
+
+
+echo "Fetching latest release info..."
+
+ASSET_URL=$(curl -s "$API_URL" | grep browser_download_url | grep "$ASSET_NAME" | cut -d '"' -f 4 | head -n 1)
+
+if [ -z "$ASSET_URL" ]; then
+  echo "❌ No Linux asset found in latest release."
+  exit 1
+fi
+
+FILE_NAME=$(basename "$ASSET_URL")
+
+echo "Downloading $FILE_NAME..."
+curl -L -o "$FILE_NAME" "$ASSET_URL"
+
+chmod +x "$FILE_NAME"
+echo "✅ Download complete. Run with: ./$FILE_NAME"
+
 
 
 echo
