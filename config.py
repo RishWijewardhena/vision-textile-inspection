@@ -119,10 +119,10 @@ SHOW_WINDOWS = False
 # -------------------------
 # MQTT Config (Heartbeat)
 # -------------------------
-MQTT_SERVER = os.getenv("MQTT_SERVER")
-MQTT_PORT = int(os.getenv("MQTT_PORT"))
-MQTT_USERNAME = os.getenv("MQTT_USERNAME")
-MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
+MQTT_SERVER = os.getenv("MQTT_SERVER","mqtt.anc.idea8.cloud") #if you cannot get the value from .env, use this default
+MQTT_PORT = int(os.getenv("MQTT_PORT","8883"))
+MQTT_USERNAME = os.getenv("MQTT_USERNAME",'backend')
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD",'bbf12cwcpm')
 
 # device id = DB_TABLE (as you specified)
 DEVICE_ID = DB_CONFIG["table"]
