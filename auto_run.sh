@@ -174,7 +174,7 @@ echo "ACPI configured and acpid restarted."
 echo
 echo "==> Creating helper runner script: $AUTO_RUNNER"
 
-ee "$AUTO_RUNNER" > /dev/null <<EOF
+tee "$AUTO_RUNNER" > /dev/null <<EOF
 #!/bin/bash
 set -euo pipefail
 
