@@ -311,9 +311,9 @@ class StitchMeasurementApp:
                      (int(round(right_px)), int(round(cy))), (200,200,0), 1)
             cv2.circle(annotated, (int(round(cx_draw)), int(round(cy))), 3, (200,0,0), -1)
             if all_widths:
-                cv2.putText(annotated, f"w:{all_widths[-1]:.1f}mm",
-                           (int(round(cx_draw))+6, int(round(cy))+6),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,255,0), 1)
+                cv2.putText(annotated, f"{all_widths[-1]:.1f}",
+                           (int(round(cx_draw))+2, int(round(cy))-20),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0,0,0), 2)
 
         # =====================================================
         # STEP 2: Select stitches for SEAM ALLOWANCE (edge distance)
