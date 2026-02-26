@@ -44,7 +44,7 @@ echo
 # --------------------------
 echo "==> Installing required system packages..."
 apt update
-apt install -y python3-venv python3-pip acpid git -y curl
+apt install -y python3-venv python3-pip acpid git curl
 
 # --------------------------
 # 2) Add user to dialout group
@@ -68,7 +68,7 @@ echo
 echo "==> Cloning/updating GitHub repository..."
 
 if [ -d "$PROJECT_DIR/.git" ]; then
-    # Case 1: Git repo exists - update it
+    # Case 1: Git repo exists - update it here you will loose your  local updates if it's there
     echo "Repository exists — updating..."
     chown -R "$TARGET_USER":"$TARGET_USER" "$PROJECT_DIR"
     cd "$PROJECT_DIR"
@@ -90,6 +90,13 @@ fi
 chown -R "$TARGET_USER":"$TARGET_USER" "$PROJECT_DIR"
 
 echo "Repository ready at: $PROJECT_DIR"
+# Validate that essential files exist
+if [ ! -f "$PROJECT_DIR/main.py" ]; then
+    echo "❌ ERROR: Repository clone/update failed - main.py not found"
+    echo "Please check your internet connection and try again"
+    exit 1
+fi
+
 
 
 # --------------------------
@@ -106,34 +113,39 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "Copied .env to project directory: $ENV_FILE"
     chown "$TARGET_USER":"$TARGET_USER" "$ENV_FILE"
   else
-    echo "WARNING: No .env file found at $SOURCE_ENV"
-    echo "Creating a default .env file..."
-    cat > "$ENV_FILE" <<'DEFAULTENV'
-# Default configuration
-RECEIVE_UPDATES=false
-DEFAULTENV
-    chown "$TARGET_USER":"$TARGET_USER" "$ENV_FILE"
+    echo "❌ ERROR: No .env file found at $SOURCE_ENV"
+    echo "The .env file should come with the .sh file"
+    exit 1
   fi
 else
   echo ".env already exists. Skipping copy."
 fi
 
-# Get the value for RECEIVE_UPDATES variable
-# Set default first to prevent unbound variable error
-RECEIVE_UPDATES="true"
-
-if [ -f "$ENV_FILE" ]; then
-    # Try to read from .env file, but use default if not found
-    RECEIVE_UPDATES=$(grep -E '^RECEIVE_UPDATES=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d ' "' || echo "false")
-fi
-
-echo "RECEIVE_UPDATES set to: $RECEIVE_UPDATES"
-
 # Ensure correct ownership
 chown -R "$TARGET_USER":"$TARGET_USER" "$PROJECT_DIR"
 
+
 # --------------------------
-# 6) Create virtualenv & install requirements
+# 6) Stop and disable old service if it exists
+# --------------------------
+echo
+echo "==> Checking for old Thread.service..."
+
+OLD_SERVICE="/etc/systemd/Thread.service"
+
+if [ -f "$OLD_SERVICE" ]; then
+  echo "Found old service. Stopping and disabling..."
+  systemctl stop Thread.service || true
+  systemctl disable Thread.service || true
+  echo "Old service stopped and disabled."
+  
+else
+  echo "No old Thread.service found. Skipping."
+fi
+
+
+# --------------------------
+# 7) Create virtualenv & install requirements
 # --------------------------
 echo
 echo "==> Creating virtual environment and installing requirements..."
@@ -154,8 +166,9 @@ else
   echo "WARNING: No requirements.txt found — skipping pip install."
 fi
 
+
 # --------------------------
-# 7) Configure ACPI power button
+# 8) Configure ACPI power button
 # --------------------------
 echo
 echo "==> Configuring ACPI power button to shut down the system..."
@@ -169,7 +182,7 @@ systemctl enable acpid
 echo "ACPI configured and acpid restarted."
 
 # --------------------------
-# 8) Create auto_runner.sh
+# 9) Create auto_runner.sh
 # --------------------------
 echo
 echo "==> Creating helper runner script: $AUTO_RUNNER"
@@ -291,12 +304,9 @@ chown "$TARGET_USER":"$TARGET_USER" "$AUTO_RUNNER"
 chmod +x "$AUTO_RUNNER"
 echo "auto_runner.sh created and set executable."
 
-chown "$TARGET_USER":"$TARGET_USER" "$AUTO_RUNNER"
-chmod +x "$AUTO_RUNNER"
-echo "auto_runner.sh created and set executable."
 
 # --------------------------
-# 9) Create systemd service file
+# 10) Create systemd service file
 # --------------------------
 echo
 echo "==> Creating systemd service: $SERVICE_PATH"
@@ -331,7 +341,7 @@ chmod 644 "$SERVICE_PATH"
 echo "Service file written."
 
 # --------------------------
-# 10) Reload systemd and enable service
+# 11) Reload systemd and enable service
 # --------------------------
 echo
 echo "==> Reloading systemd and enabling Thread.service..."
@@ -339,7 +349,7 @@ systemctl daemon-reload
 systemctl enable Thread.service
 
 # --------------------------
-# 11) Force Xorg (disable Wayland for AnyDesk compatibility)
+# 12) Force Xorg (disable Wayland for AnyDesk compatibility)
 # --------------------------
 echo
 echo "==> Disabling Wayland to force Xorg (for AnyDesk)..."
@@ -356,10 +366,9 @@ echo "A reboot is required for this change to take effect."
 
 
 # --------------------------
-# 12) Download the calibration app
+# 13) Download the calibration app
 # --------------------------
 
-#!/bin/bash
 
 REPO="RishWijewardhena/ChArUco-Calibration"
 ASSET_NAME="ChArUco_Calibration_Linux"
