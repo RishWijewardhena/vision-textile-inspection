@@ -1,4 +1,4 @@
-Main/
+venv/
 __pycache__/
 .env
 saved_annotations/

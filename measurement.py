@@ -1,3 +1,4 @@
+
 # measurement.py
 import os
 import json
@@ -183,7 +184,7 @@ class StitchMeasurementApp:
 
     def process_frame(self, frame):
         """Process frame to compute seam metrics and annotations."""
-        h, w = frame.shape[:2] #only getting the height and width of the frame.
+        h, w = frame.shape[:2]
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         try:
@@ -207,11 +208,11 @@ class StitchMeasurementApp:
                 cls_arr, boxes = [], []
 
             for i, cls_id in enumerate(cls_arr):
-                cid = int(cls_id) # converting it to int
-                x1, y1, x2, y2 = map(int, boxes[i]) #Take each value in boxes[i]Convert it to an integer using int()Assign the results to x1, y1, x2, y2
+                cid = int(cls_id)
+                x1, y1, x2, y2 = map(int, boxes[i])
                 mask = get_instance_mask_as_bitmap(r, i, h, w)
 
-                if cid == self.stitch_id: #checking if the detected object is a stitch
+                if cid == self.stitch_id:
                     stitch_masks.append(mask)
                     stitch_boxes.append((x1, y1, x2, y2))
                     cv2.rectangle(annotated, (x1, y1), (x2, y2), (255, 255, 0), 1)
@@ -243,14 +244,13 @@ class StitchMeasurementApp:
             poly = np.array(pts[::step], dtype=np.int32)
             cv2.polylines(annotated, [poly], False, (255,128,0), 2)
 
-        # Compute stitch centroids
+        # Compute stitch centroids for ALL detected stitches
         stitch_meta = []
         centroids_y = []
         for idx, mask in enumerate(stitch_masks):
             if mask is not None and mask.sum() > 0:
                 M = cv2.moments((mask>0).astype(np.uint8))
                 if M["m00"] != 0:
-
                     cx = float(M["m10"] / M["m00"])
                     cy = float(M["m01"] / M["m00"])
                 else:
@@ -284,27 +284,80 @@ class StitchMeasurementApp:
                               'stitch_count': 0, 'timestamp': datetime.now(),
                               'error': 'No stitches detected'}
 
-        # Cluster stitches and select closest to fabric edge
-        labels = np.zeros(len(centroids_y), dtype=int)
-        chosen_label = 0
-        if not SKIP_CLUSTER and len(centroids_y) >= 2:
-            vals = np.array(centroids_y)
-            labels, centers = kmeans_1d_two_clusters(vals)
-            fabric_validYs = envelope[envelope >= 0]
-            if fabric_validYs.size > 0:
-                fabric_mean_y = float(np.mean(fabric_validYs))
-                c0_mean = float(vals[labels == 0].mean()) if (labels==0).any() else 1e9
-                c1_mean = float(vals[labels == 1].mean()) if (labels==1).any() else 1e9
-                chosen_label = 0 if abs(c0_mean - fabric_mean_y) < abs(c1_mean - fabric_mean_y) else 1
+        # =====================================================
+        # STEP 1: Compute stitch widths from ALL detected stitches
+        # (stitch length/width should use every stitch, regardless of row)
+        # =====================================================
+        all_widths = []
+        all_indices = list(range(len(stitch_meta)))
+        for i in all_indices:
+            left_px, right_px = stitch_meta[i]["left_px"], stitch_meta[i]["right_px"]
+            cy = stitch_meta[i]["cy"]
+            p_left = pixel_to_world_using_camera_plane(float(left_px), float(cy),
+                                                       self.K, self.dist, self.R,
+                                                       self.t, self.n_c, self.d_c)
+            p_right = pixel_to_world_using_camera_plane(float(right_px), float(cy),
+                                                        self.K, self.dist, self.R,
+                                                        self.t, self.n_c, self.d_c)
+            if p_left is not None and p_right is not None:
+                width_mm = float(np.linalg.norm(p_right - p_left)) * 1000.0
+                all_widths.append(width_mm)
 
-        selected_indices = [i for i, lab in enumerate(labels) if lab == chosen_label]
+            # Draw width markers for all stitches
+            cx_draw = stitch_meta[i]["cx"]
+            cv2.circle(annotated, (int(round(left_px)), int(round(cy))), 3, (200,200,0), -1)
+            cv2.circle(annotated, (int(round(right_px)), int(round(cy))), 3, (200,200,0), -1)
+            cv2.line(annotated, (int(round(left_px)), int(round(cy))),
+                     (int(round(right_px)), int(round(cy))), (200,200,0), 1)
+            cv2.circle(annotated, (int(round(cx_draw)), int(round(cy))), 3, (200,0,0), -1)
+            if all_widths:
+                cv2.putText(annotated, f"w:{all_widths[-1]:.1f}mm",
+                           (int(round(cx_draw))+6, int(round(cy))+6),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,255,0), 1)
+
+        # =====================================================
+        # STEP 2: Select stitches for SEAM ALLOWANCE (edge distance)
+        # Only the row closest to the camera (highest y / closest to fabric edge)
+        # =====================================================
+        if SKIP_CLUSTER:
+            # When skipping clustering, pick the row closest to fabric edge
+            # by selecting stitches with y > median y (bottom half = close to camera)
+            vals = np.array(centroids_y)
+            if len(vals) >= 2:
+                median_y = np.median(vals)
+                # Check if there's meaningful spread (two rows exist)
+                y_range = vals.max() - vals.min()
+                if y_range > 30:  # pixels — threshold for "two distinct rows"
+                    # Select stitches in the bottom half (close to camera = high y = close to fabric edge)
+                    selected_indices = [i for i, cy in enumerate(centroids_y) if cy >= median_y]
+                else:
+                    # All stitches are roughly in one row, keep all
+                    selected_indices = list(range(len(centroids_y)))
+            else:
+                selected_indices = list(range(len(centroids_y)))
+        else:
+            # Use k-means clustering on y-coordinates
+            if len(centroids_y) >= 2:
+                vals = np.array(centroids_y)
+                labels, centers = kmeans_1d_two_clusters(vals)
+                fabric_validYs = envelope[envelope >= 0]
+                if fabric_validYs.size > 0:
+                    fabric_mean_y = float(np.mean(fabric_validYs))
+                    c0_mean = float(vals[labels == 0].mean()) if (labels==0).any() else 1e9
+                    c1_mean = float(vals[labels == 1].mean()) if (labels==1).any() else 1e9
+                    chosen_label = 0 if abs(c0_mean - fabric_mean_y) < abs(c1_mean - fabric_mean_y) else 1
+                else:
+                    chosen_label = 0
+                selected_indices = [i for i, lab in enumerate(labels) if lab == chosen_label]
+            else:
+                selected_indices = list(range(len(centroids_y)))
 
         # Filter by proximity to envelope
         final_indices = []
         for i in selected_indices:
             cx = int(round(stitch_meta[i]["cx"]))
             cy = stitch_meta[i]["cy"]
-            xs = [int(np.clip(cx + dx, 0, w-1)) 
+            xs = [int(np.clip(cx + dx, 0, w-1))
                   for dx in range(-ENVELOPE_NEIGHBORHOOD, ENVELOPE_NEIGHBORHOOD+1)]
             env_vals = [envelope[x] for x in xs if envelope[x] >= 0]
             if len(env_vals) == 0:
@@ -323,103 +376,84 @@ class StitchMeasurementApp:
             if LOG_DEBUG:
                 print("Warning: No stitches within envelope range, using all selected")
 
-        # Measure distances and widths
-        per_dists, per_widths = [], []
-        per_pixel_widths = [] #collection of all pixel widths for 
-
+        # =====================================================
+        # STEP 3: Measure edge distances ONLY for the selected (close) row
+        # =====================================================
+        per_dists = []
         if LOG_DEBUG:
             print(f"\n{'='*60}")
-            print(f"Processing {len(final_indices)} stitches")
+            print(f"Processing {len(final_indices)} stitches for seam allowance")
 
         for i in final_indices:
             cx, cy = stitch_meta[i]["cx"], stitch_meta[i]["cy"]
             cx_int = int(np.clip(int(round(cx)), 0, w-1))
-            
-            xs = [int(np.clip(cx_int + dx, 0, w-1)) 
+
+            xs = [int(np.clip(cx_int + dx, 0, w-1))
                   for dx in range(-ENVELOPE_NEIGHBORHOOD, ENVELOPE_NEIGHBORHOOD+1)]
             env_vals = [envelope[x] for x in xs if envelope[x] >= 0]
-            
+
             if len(env_vals) > 0:
                 edge_y = float(np.median(env_vals))
-                p_stitch = pixel_to_world_using_camera_plane(float(cx), float(cy), 
-                                                             self.K, self.dist, self.R, 
+                p_stitch = pixel_to_world_using_camera_plane(float(cx), float(cy),
+                                                             self.K, self.dist, self.R,
                                                              self.t, self.n_c, self.d_c)
-                p_edge = pixel_to_world_using_camera_plane(float(cx), float(edge_y), 
-                                                           self.K, self.dist, self.R, 
+                p_edge = pixel_to_world_using_camera_plane(float(cx), float(edge_y),
+                                                           self.K, self.dist, self.R,
                                                            self.t, self.n_c, self.d_c)
-                
+
                 if p_stitch is not None and p_edge is not None:
                     dist_mm = float(np.linalg.norm(p_stitch - p_edge)) * 1000.0
                     per_dists.append(dist_mm)
-                    cv2.line(annotated, (cx_int, int(round(edge_y))), 
+                    cv2.line(annotated, (cx_int, int(round(edge_y))),
                             (int(round(cx)), int(round(cy))), (0,255,0), 1)
                     cv2.circle(annotated, (cx_int, int(round(edge_y))), 2, (255,0,255), -1)
 
-            left_px, right_px = stitch_meta[i]["left_px"], stitch_meta[i]["right_px"]
-            pixel_width=right_px - left_px
-            per_pixel_widths.append(pixel_width)
-            
-            p_left = pixel_to_world_using_camera_plane(float(left_px), float(cy), 
-                                                       self.K, self.dist, self.R, 
-                                                       self.t, self.n_c, self.d_c)
-            p_right = pixel_to_world_using_camera_plane(float(right_px), float(cy), 
-                                                        self.K, self.dist, self.R, 
-                                                        self.t, self.n_c, self.d_c)
-            
-            # if p_left is not None and p_right is not None:
-            width_mm = float(np.linalg.norm(p_right - p_left)) * 1000.0
-            per_widths.append(width_mm)
-            cv2.circle(annotated, (int(round(left_px)), int(round(cy))), 3, (200,200,0), -1)
-            cv2.circle(annotated, (int(round(right_px)), int(round(cy))), 3, (200,200,0), -1)
-            cv2.line(annotated, (int(round(left_px)), int(round(cy))), 
-                        (int(round(right_px)), int(round(cy))), (200,200,0), 1)
-
-            cv2.circle(annotated, (int(round(cx)), int(round(cy))), 10, (255,0,0), -1)
-            if per_widths:
-                cv2.putText(annotated, f"w:{per_widths[-1]:.1f}mm", 
-                           (int(round(cx))+6, int(round(cy))+6),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,255,0), 1)
-
-        n_found = len(per_widths)
+        # =====================================================
+        # STEP 4: Compute averages
+        # Edge distance: only from close row
+        # Stitch width: from ALL stitches
+        # =====================================================
+        n_found_dist = len(per_dists)
+        n_found_width = len(all_widths)
         avg_dist = float(np.mean(per_dists)) if len(per_dists) >= self.min_stitches else None
-        avg_width = float(np.mean(per_widths)) if len(per_widths) >= self.min_stitches else None
-        
+        avg_width = float(np.mean(all_widths)) if len(all_widths) >= self.min_stitches else None
+
         if avg_dist is not None:
             self.frame_buf_dist.append(avg_dist)
             smooth_dist = float(np.median(self.frame_buf_dist))
         else:
             smooth_dist = None
-            
+
         if avg_width is not None:
             self.frame_buf_width.append(avg_width)
             smooth_width = float(np.median(self.frame_buf_width))
         else:
             smooth_width = None
-        
+
         # Display info
         if smooth_dist is not None and smooth_width is not None:
-            info_text = f"Edge Dist: {smooth_dist:.2f}mm | Avg Width: {smooth_width:.2f}mm (n={n_found})"
+            info_text = f"Edge Dist: {smooth_dist:.2f}mm | Avg Width: {smooth_width:.2f}mm (n_d={n_found_dist}, n_w={n_found_width})"
         elif smooth_dist is not None:
-            info_text = f"Edge Distance: {smooth_dist:.2f}mm (n={n_found})"
+            info_text = f"Edge Distance: {smooth_dist:.2f}mm (n={n_found_dist})"
         elif smooth_width is not None:
-            info_text = f"Avg Width: {smooth_width:.2f}mm (n={n_found})"
+            info_text = f"Avg Width: {smooth_width:.2f}mm (n={n_found_width})"
         else:
-            info_text = f"Insufficient stitches (found {n_found}, need {self.min_stitches})"
+            info_text = f"Insufficient stitches (dist={n_found_dist}, width={n_found_width}, need {self.min_stitches})"
 
-        contours_vis, _ = cv2.findContours((fabric_mask>0).astype(np.uint8), 
+        contours_vis, _ = cv2.findContours((fabric_mask>0).astype(np.uint8),
                                           cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if contours_vis:
             cv2.drawContours(annotated, contours_vis, -1, (0,0,255), 2)
 
         cv2.putText(annotated, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
         detection_info = f"Stitches: {len(stitch_masks)} | Fabric: {len(fabric_masks)}"
-        cv2.putText(annotated, detection_info, (10, h - 10), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        
+        cv2.putText(annotated, detection_info, (10, h - 10),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
         return annotated, {
             'edge_distance_mm': smooth_dist,
             'stitch_width_mm': smooth_width,
-            'stitch_count': n_found,
+            'stitch_count': n_found_dist,
             'timestamp': datetime.now()
         }
 
