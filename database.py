@@ -30,26 +30,39 @@ class DatabaseHandler:
         except mysql.connector.Error as e:
             print(f"❌ Database connection failed: {e}")
             return False
-    
-    def ensure_table_exists(self):
-        """Create table if it doesn't exist"""
-        create_table_query = f"""
-        CREATE TABLE IF NOT EXISTS `{self.config['table']}` (
-            `id` BIGINT(20) AUTO_INCREMENT PRIMARY KEY,
-            `time_stamp` DATETIME(3) NOT NULL,
-            `stitch_length` DECIMAL(10,3),
-            `seam_allowance` DECIMAL(10,3),
-            `total_distance` DECIMAL(12,3)
-        )
-        """
+
+    def get_last_record_date(self):
+        """Get the date of the last inserted record"""
         try:
-            self.cursor.execute(create_table_query)
-            self.connection.commit()
-            if LOG_DEBUG:
-                print(f"✅ Table '{self.config['table']}' ready")
-            return True
-        except mysql.connector.Error as e:
-            print(f"❌ Failed to create table: {e}")
+            query = f"SELECT timestamp FROM `{self.config['table']}` ORDER BY timestamp DESC LIMIT 1"
+            self.cursor.execute(query)
+            result = self.cursor.fetchone()
+            if result:
+                return result[0].date()  # Return only the date part
+            return None
+        except Exception as e:
+            print(f"⚠️ Could not fetch last record date: {e}")
+            return None
+    
+    # def ensure_table_exists(self):
+    #     """Create table if it doesn't exist"""
+    #     create_table_query = f"""
+    #     CREATE TABLE IF NOT EXISTS `{self.config['table']}` (
+    #         `id` BIGINT(20) AUTO_INCREMENT PRIMARY KEY,
+    #         `time_stamp` DATETIME(3) NOT NULL,
+    #         `stitch_length` DECIMAL(10,3),
+    #         `seam_allowance` DECIMAL(10,3),
+    #         `total_distance` DECIMAL(12,3)
+    #     )
+    #     """
+    #     try:
+    #         self.cursor.execute(create_table_query)
+    #         self.connection.commit()
+    #         if LOG_DEBUG:
+    #             print(f"✅ Table '{self.config['table']}' ready")
+    #         return True
+    #     except mysql.connector.Error as e:
+    #         print(f"❌ Failed to create table: {e}")
             return False
     
     def insert_measurement(self, total_distance, stitch_length
