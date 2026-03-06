@@ -5,5 +5,8 @@ saved_annotations/
 test.py
 Utils/Photos/
 extrinsics.json/
+logs/
+auto_runner.sh
+
 
 
