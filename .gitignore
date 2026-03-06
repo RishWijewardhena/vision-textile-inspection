@@ -4,4 +4,6 @@ __pycache__/
 saved_annotations/
 test.py
 Utils/Photos/
+extrinsics.json/
+
 
