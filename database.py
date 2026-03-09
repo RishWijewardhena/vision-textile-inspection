@@ -63,7 +63,7 @@ class DatabaseHandler:
     #         return True
     #     except mysql.connector.Error as e:
     #         print(f"❌ Failed to create table: {e}")
-            return False
+    #       return False
     
     def insert_measurement(self, total_distance, stitch_length
                            , seam_allowance):
@@ -201,7 +201,7 @@ if __name__ == "__main__":
 
                 #delete the test record
                 db.delete_measurements(latest['timestamp'])
-                print("🗑️Test record deleted")
+                print("🗑️ Test record deleted")
             else:
                 print("⚠️ No measurements found")
         else:
