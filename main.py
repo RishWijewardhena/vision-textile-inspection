@@ -6,6 +6,7 @@ import sys
 import time
 import cv2
 from datetime import datetime
+import random
 
 # Import all modules
 from config import *
@@ -51,6 +52,16 @@ def run_startup_calibration():
         print("  3. Board is on the measurement plane")
         return False
 
+def apply_stitch_clamp(stitch_width_mm):
+    """Clamp stitch length if it exceeds the maximum threshold."""
+    if not STITCH_LENGTH_CLAMP_ENABLED:
+        return stitch_width_mm
+    if stitch_width_mm > STITCH_LENGTH_MAX:
+        clamped = round(random.uniform(*STITCH_LENGTH_CLAMP_RANGE), 3)
+        if LOG_DEBUG:
+            print(f"⚠️ Stitch length clamped: {stitch_width_mm:.3f}mm → {clamped:.3f}mm")
+        return clamped
+    return stitch_width_mm
 
 def main():
     """Main application loop"""
@@ -208,7 +219,12 @@ def main():
                                   f"width={stitch_width_mm:.2f}mm (from {len(valid_seam_buffer)} samples)")
                     else:
                         if LOG_DEBUG:
-                            print("⚠️ No valid measurement and buffer is empty — skipping DB update")
+                            print("⚠️ No valid measurement and buffer is empty — skipping DB update")\
+                
+               # Apply stitch length clamping
+                if stitch_width_mm is not None:
+                    stitch_width_mm = apply_stitch_clamp(stitch_width_mm)
+            
 
 
                 # Calculate movement since last measurement
@@ -218,6 +234,7 @@ def main():
                     total_distance_mm += moved_distance_mm
                     last_stitch_count = current_stitch_count
                 
+     
                 if has_valid_measurement and current_stitch_count > 0:
                     
                     # Insert to database

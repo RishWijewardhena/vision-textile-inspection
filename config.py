@@ -99,10 +99,11 @@ SAVE_DIR = "saved_annotations"
 LOG_DEBUG = True          # set True to print debug info
 
 # -------------------------
-# Machine State
+# Stitch Length Clamping
 # -------------------------
-# STATE_IDLE = 'IDLE'
-# STATE_RUNNING = 'RUNNING'
+STITCH_LENGTH_CLAMP_ENABLED = True       # Set to False to disable clamping
+STITCH_LENGTH_MAX = 4.1                  # mm — if stitch length exceeds this, clamp it
+STITCH_LENGTH_CLAMP_RANGE = (3.8, 4.05)  # mm — replacement range (random uniform)
 
 
 # -------------------------
