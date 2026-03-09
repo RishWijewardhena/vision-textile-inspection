@@ -115,13 +115,22 @@ def main():
     if db:
         last_date=db.get_last_record_date()
         today=datetime.now().date()
-        if last_date!=today:
+        if last_data and last_date!=today:
             db.insert_measurement(
                 total_distance=0.0,
                 stitch_length=0.0,
                 seam_allowance=0.0,
             )
             print("🔄 New day detected - total distance reset to 0 in database")
+
+        else if last_date is None:
+            db.insert_measurement(
+                total_distance=0.0,
+                stitch_length=0.0,
+                seam_allowance=0.0,
+            )
+            print("📊 No previous records - total distance initialized to 0 in database")
+            
         else:
             print(f"📊 Total distance continues from last measurement in database: {last_date}")
 
