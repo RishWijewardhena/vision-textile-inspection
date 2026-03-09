@@ -115,7 +115,7 @@ def main():
     if db:
         last_date=db.get_last_record_date()
         today=datetime.now().date()
-        if last_date is not None and last_date!=today:
+        if last_date!=today:
             db.insert_measurement(
                 total_distance=0.0,
                 stitch_length=0.0,
