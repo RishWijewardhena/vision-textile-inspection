@@ -64,6 +64,7 @@ MAX_EDGE_CANDIDATES = 20  # number of nearest contour points to try per stitch
 MAX_PX_DISTANCE = 250    # max pixel distance between stitch centroid and fabric edge (reduced for tighter filtering)
 ENVELOPE_NEIGHBORHOOD = 3# columns around centroid to average envelope y
 SKIP_CLUSTER = False      # if True, don't try to cluster into 2 stitch lines
+TWO_ROW_THRESHOLD_PX = 30  # pixels — threshold for detecting "two distinct rows" of stitches
 
 # -------------------------
 # Serial Communication

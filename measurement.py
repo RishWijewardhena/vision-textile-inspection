@@ -31,9 +31,8 @@ def force_camera_resolution(cap, w, h):
     # Set auto exposure (V4L2 expects 1 = manual, 3 = auto)
     cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, CAMERA_AUTO_EXPOSURE)
    
-    cap.set(cv2.CAP_PROP_EXPOSURE, CAMERA_EXPOSURE)  # Adjust this value``
-
-    # # Optional: set gain
+    cap.set(cv2.CAP_PROP_EXPOSURE, CAMERA_EXPOSURE)  # Adjust this value
+        # # Optional: set gain
     # cap.set(cv2.CAP_PROP_GAIN, 50)
     # cap.set(cv2.CAP_PROP_BRIGHTNESS, 150)
 
@@ -183,7 +182,21 @@ class StitchMeasurementApp:
         return envelope
 
     def process_frame(self, frame):
-        """Process frame to compute seam metrics and annotations."""
+        """Process frame to compute seam metrics and annotations.
+
+        Args:
+            frame: Input BGR image from camera.
+
+        Returns:
+            tuple: (annotated_frame, measurements_dict)
+                - annotated_frame: BGR image with visualizations drawn.
+                - measurements_dict: Dictionary containing:
+                    - 'edge_distance_mm': float or None - seam allowance in mm.
+                    - 'stitch_width_mm': float or None - average stitch width in mm.
+                    - 'stitch_count': int - number of stitches used for edge distance.
+                    - 'timestamp': datetime - when measurement was taken.
+                    - 'error': str (optional) - error message if processing failed.
+        """
         h, w = frame.shape[:2]
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -196,6 +209,7 @@ class StitchMeasurementApp:
             return frame.copy(), {'edge_distance_mm': None, 'stitch_width_mm': None,
                                  'stitch_count': 0, 'timestamp': datetime.now(),
                                  'error': 'Model inference failed'}
+        
 
         annotated = frame.copy()
         stitch_masks, stitch_boxes, fabric_masks = [], [], []
@@ -250,7 +264,7 @@ class StitchMeasurementApp:
         for idx, mask in enumerate(stitch_masks):
             if mask is not None and mask.sum() > 0:
                 M = cv2.moments((mask>0).astype(np.uint8))
-                if M["m00"] != 0:
+                if M["m00"] > 1e-6:
                     cx = float(M["m10"] / M["m00"])
                     cy = float(M["m01"] / M["m00"])
                 else:
@@ -327,7 +341,7 @@ class StitchMeasurementApp:
                 median_y = np.median(vals)
                 # Check if there's meaningful spread (two rows exist)
                 y_range = vals.max() - vals.min()
-                if y_range > 30:  # pixels — threshold for "two distinct rows"
+                if y_range > TWO_ROW_THRESHOLD_PX:
                     # Select stitches in the bottom half (close to camera = high y = close to fabric edge)
                     selected_indices = [i for i, cy in enumerate(centroids_y) if cy >= median_y]
                 else:
@@ -339,7 +353,7 @@ class StitchMeasurementApp:
             # Use k-means clustering on y-coordinates
             if len(centroids_y) >= 2:
                 vals = np.array(centroids_y)
-                labels, centers = kmeans_1d_two_clusters(vals)
+                labels, _ = kmeans_1d_two_clusters(vals)  # centers not needed, using mean of each cluster
                 fabric_validYs = envelope[envelope >= 0]
                 if fabric_validYs.size > 0:
                     fabric_mean_y = float(np.mean(fabric_validYs))
@@ -456,13 +470,6 @@ class StitchMeasurementApp:
             'stitch_count': n_found_dist,
             'timestamp': datetime.now()
         }
-
-    def get_single_measurement(self):
-        """Process one frame and return measurements."""
-        ret, frame = self.cap.read()
-        if not ret:
-            return None, None
-        return self.process_frame(frame)
 
     def run(self):
         """Continuous capture loop for standalone operation."""
