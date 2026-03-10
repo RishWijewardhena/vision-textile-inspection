@@ -115,7 +115,7 @@ def main():
     if db:
         last_date=db.get_last_record_date()
         today=datetime.now().date()
-        if last_data and last_date!=today:
+        if last_date and last_date!=today:
             db.insert_measurement(
                 total_distance=0.0,
                 stitch_length=0.0,
@@ -123,7 +123,7 @@ def main():
             )
             print("🔄 New day detected - total distance reset to 0 in database")
 
-        else if last_date is None:
+        elif last_date is None:
             db.insert_measurement(
                 total_distance=0.0,
                 stitch_length=0.0,
