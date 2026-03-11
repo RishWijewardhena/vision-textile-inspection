@@ -115,9 +115,23 @@ FILE_RETENTION_HOURS = 24
 FILE_CLEANUP_INTERVAL_SECONDS = 3600
 
 # -------------------------
+# Edge Detection Config (for measurement_edge.py)
+# -------------------------
+EDGE_CANNY_LOW = 50           # Canny lower threshold
+EDGE_CANNY_HIGH = 150         # Canny upper threshold
+EDGE_BLUR_KERNEL = 5          # Gaussian blur kernel size (odd number, 0 = skip)
+EDGE_DILATE_KERNEL = 3        # Dilation kernel to bridge small edge gaps (0 = skip)
+EDGE_ROI_TOP_FRACTION = 0.35  # ROI top boundary (fraction of image height)
+EDGE_ROI_BOTTOM_FRACTION = 0.7  # ROI bottom boundary (fraction of image height)
+EDGE_ROI_LEFT_FRACTION = 0.55   # ROI left boundary (fraction of image width)
+EDGE_ROI_RIGHT_FRACTION = 0.99 # ROI right boundary (fraction of image width)
+EDGE_ENVELOPE_SMOOTH_KERNEL = 15  # Median filter kernel for smoothing envelope (odd, 0 = skip)
+EDGE_SHOW_CANNY_OVERLAY = False   # If True, overlay Canny edges in red on annotated frame (debug)
+
+# -------------------------
 # Activate live imshow windows
 # -------------------------
-SHOW_WINDOWS = False
+SHOW_WINDOWS = True
 
 # -------------------------
 # MQTT Config (Heartbeat)
