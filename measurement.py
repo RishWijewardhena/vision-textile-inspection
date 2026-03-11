@@ -1,4 +1,3 @@
-
 # measurement.py
 import os
 import json
@@ -202,7 +201,8 @@ class StitchMeasurementApp:
 
         try:
             results = self.model.predict(rgb, verbose=False, conf=CONF_THRESH, 
-                                        iou=IOU_THRESH, max_det=MAX_DETECTIONS)
+                                        iou=IOU_THRESH, max_det=MAX_DETECTIONS,
+                                        imgsz=960)
             r = results[0]
         except Exception as e:
             print("Model inference error:", e)
