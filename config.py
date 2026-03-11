@@ -131,7 +131,7 @@ EDGE_SHOW_CANNY_OVERLAY = False   # If True, overlay Canny edges in red on annot
 # -------------------------
 # Activate live imshow windows
 # -------------------------
-SHOW_WINDOWS = True
+SHOW_WINDOWS = False
 
 # -------------------------
 # MQTT Config (Heartbeat)
