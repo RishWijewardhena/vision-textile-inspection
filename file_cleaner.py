@@ -102,7 +102,7 @@ class FileCleanerThread:
     
     def start(self):
         '''
-        start the cealnuo thread
+        start the cleanup thread
         '''
 
         if self.running:
