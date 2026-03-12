@@ -228,35 +228,41 @@ def main():
                                   f"width={stitch_width_mm:.2f}mm (from {len(valid_seam_buffer)} samples)")
                     else:
                         if LOG_DEBUG:
-                            print("⚠️ No valid measurement and buffer is empty — skipping DB update")\
-                
-               # Apply stitch length clamping
+                            print("⚠️ No valid measurement and buffer is empty — skipping DB update")  # Fix 2: removed stray backslash
+
+                # Apply stitch length clamping  
                 if stitch_width_mm is not None:
                     stitch_width_mm = apply_stitch_clamp(stitch_width_mm)
-            
 
+                stitch_delta = 0
+                moved_distance_mm = 0.0  # initialize to avoid UnboundLocalError
 
                 # Calculate movement since last measurement
                 if stitch_width_mm is not None:
                     stitch_delta = current_stitch_count - last_stitch_count
+                    if stitch_delta < 0:  # Fix 4: handle counter reset
+                        if LOG_DEBUG:
+                            print(f"⚠️ Stitch counter reset detected: {last_stitch_count} → {current_stitch_count}")
+                        stitch_delta = 0
                     moved_distance_mm = stitch_delta * stitch_width_mm
                     total_distance_mm += moved_distance_mm
-                    last_stitch_count = current_stitch_count
                 
-     
-                if has_valid_measurement and current_stitch_count > 0:
-                    
+                # Fix 5: always update last_stitch_count to prevent spike on next valid frame
+                last_stitch_count = current_stitch_count
+
+                if stitch_delta > 0:
                     # Insert to database
-                    if db and stitch_delta > 0: #only log if there's a new rotation
+                    if db:  # redundant inner check removed
                         db.insert_measurement(
                             total_distance=total_distance_mm,
                             stitch_length=stitch_width_mm,
-                            seam_allowance=seam_length_mm,
+                            seam_allowance=seam_length_mm if seam_length_mm is not None else 0.0,
                         )
                     
-                    # Display info on frame
+                    # Fix 6: guard seam_length_mm against None in f-string
+                    seam_display = f"{seam_length_mm:.2f}" if seam_length_mm is not None else "N/A"
                     info_text = (f"Count: {current_stitch_count} | Count_delta: {stitch_delta} | Moved: {moved_distance_mm:.2f}mm | "
-                               f"Total: {total_distance_mm:.2f}mm | Seam: {seam_length_mm:.2f}mm")
+                               f"Total: {total_distance_mm:.2f}mm | Seam: {seam_display}mm")
                     if stitch_width_mm:
                         info_text += f" | Width: {stitch_width_mm:.2f}mm"
                     
