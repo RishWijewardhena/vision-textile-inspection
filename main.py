@@ -199,7 +199,7 @@ def main():
                 annotated, measurements = measurement_app.process_frame(frame)
                 
                 # Get stitch count from serial
-                current_stitch_count = serial_reader.get_stitch_count() if serial_reader else 0
+                current_stitch_count = serial_reader.get_stitch_count()
 
                 # Calculate total distance
                 # measurements is a dict with keys: edge_distance_mm, stitch_width_mm, stitch_count, timestamp
@@ -240,14 +240,14 @@ def main():
                 # Calculate movement since last measurement
                 if stitch_width_mm is not None:
                     stitch_delta = current_stitch_count - last_stitch_count
-                    if stitch_delta < 0:  # Fix 4: handle counter reset
+                    if stitch_delta < 0:  #  handle counter reset
                         if LOG_DEBUG:
                             print(f"⚠️ Stitch counter reset detected: {last_stitch_count} → {current_stitch_count}")
                         stitch_delta = 0
                     moved_distance_mm = stitch_delta * stitch_width_mm
                     total_distance_mm += moved_distance_mm
                 
-                # Fix 5: always update last_stitch_count to prevent spike on next valid frame
+                # always update last_stitch_count to prevent spike on next valid frame
                 last_stitch_count = current_stitch_count
 
                 if stitch_delta > 0:
