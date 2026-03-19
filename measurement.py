@@ -291,13 +291,13 @@ class StitchMeasurementApp:
                     - 'error': str (optional) - error message if processing failed.
         """
         h, w = frame.shape[:2]
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         # --------------------------------------------------
         # YOLO inference — detect STITCHES only
         # --------------------------------------------------
         try:
-            results = self.model.predict(rgb, verbose=False, conf=CONF_THRESH,
+            results = self.model.predict(frame, verbose=False, conf=CONF_THRESH,
                                          iou=IOU_THRESH, max_det=MAX_DETECTIONS,
                                          imgsz=960)
             r = results[0]
