@@ -69,6 +69,7 @@ def pixel_to_world_using_camera_plane(u, v, K, dist, R, t, n_c, d_c):
 # -------------------------
 def get_instance_mask_as_bitmap(result, idx, h, w):
     """Extract instance segmentation mask from YOLO results as binary bitmap."""
+    # Method 1: Direct mask data
     try:
         data = result.masks.data
         arr = data[idx].cpu().numpy() if hasattr(data[idx], 'cpu') else np.array(data[idx])
@@ -81,6 +82,7 @@ def get_instance_mask_as_bitmap(result, idx, h, w):
             return mask
     except Exception:
         pass
+
     return None
 
 def kmeans_1d_two_clusters(values, max_iters=10):
@@ -112,122 +114,11 @@ def kmeans_1d_two_clusters(values, max_iters=10):
 
 
 # -------------------------
-# Fabric Edge Detection via Canny
-# -------------------------
-def detect_fabric_edge_canny(frame, canny_low=EDGE_CANNY_LOW, canny_high=EDGE_CANNY_HIGH,
-                              blur_ksize=EDGE_BLUR_KERNEL, dilate_ksize=EDGE_DILATE_KERNEL,
-                              roi_top_frac=EDGE_ROI_TOP_FRACTION,
-                              roi_bottom_frac=EDGE_ROI_BOTTOM_FRACTION,
-                              roi_left_frac=EDGE_ROI_LEFT_FRACTION,
-                              roi_right_frac=EDGE_ROI_RIGHT_FRACTION,
-                              smooth_ksize=EDGE_ENVELOPE_SMOOTH_KERNEL):
-    """Detect fabric edge using Canny edge detection and return the lower envelope.
-
-    Strategy:
-        1. Convert to grayscale and blur to reduce noise.
-        2. Apply Canny edge detection.
-        3. Optionally dilate to connect nearby edge fragments.
-        4. Restrict search to a rectangular ROI defined by fractional bounds
-           (width: roi_left_frac to roi_right_frac, height: roi_top_frac to roi_bottom_frac).
-        5. For each column inside the ROI, find the bottommost edge pixel — this traces the fabric edge.
-        6. Smooth the resulting envelope with a median filter.
-
-    Args:
-        frame: Input BGR image from camera.
-        canny_low: Lower threshold for Canny.
-        canny_high: Upper threshold for Canny.
-        blur_ksize: Gaussian blur kernel size (odd number).
-        dilate_ksize: Dilation kernel size to connect nearby edges (0 = skip).
-        roi_top_frac: Top boundary of ROI as fraction of image height (0.0–1.0).
-        roi_bottom_frac: Bottom boundary of ROI as fraction of image height (0.0–1.0).
-        roi_left_frac: Left boundary of ROI as fraction of image width (0.0–1.0).
-        roi_right_frac: Right boundary of ROI as fraction of image width (0.0–1.0).
-        smooth_ksize: Kernel size for median smoothing of the envelope (odd, 0 = skip).
-
-    Returns:
-        envelope: 1D int array of length w. envelope[x] = y-coordinate of the
-                  detected fabric edge in column x, or -1 if no edge found.
-        edge_map: Binary edge image (useful for visualization / debugging).
-        roi_rect: Tuple (roi_x1, roi_y1, roi_x2, roi_y2) pixel coordinates of the ROI rectangle.
-    """
-    h, w = frame.shape[:2]
-
-    # 1. Grayscale + blur
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    if blur_ksize > 0:
-        ksize = blur_ksize if blur_ksize % 2 == 1 else blur_ksize + 1
-        gray = cv2.GaussianBlur(gray, (ksize, ksize), 0)
-
-    # 2. Canny edge detection
-    edges = cv2.Canny(gray, canny_low, canny_high)
-
-    # 3. Optional dilation to bridge small gaps
-    if dilate_ksize > 0:
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (dilate_ksize, dilate_ksize))
-        edges = cv2.dilate(edges, kernel, iterations=1)
-
-    # 4. Mask out everything OUTSIDE the rectangular ROI
-    roi_y1 = max(0, min(int(h * roi_top_frac), h - 1))
-    roi_y2 = max(roi_y1 + 1, min(int(h * roi_bottom_frac), h))
-    roi_x1 = max(0, min(int(w * roi_left_frac), w - 1))
-    roi_x2 = max(roi_x1 + 1, min(int(w * roi_right_frac), w))
-
-    mask = np.zeros_like(edges)
-    mask[roi_y1:roi_y2, roi_x1:roi_x2] = 255
-    edges = cv2.bitwise_and(edges, mask)
-
-    roi_rect = (roi_x1, roi_y1, roi_x2, roi_y2)
-
-    # 5. For each column, find the BOTTOMMOST edge pixel (lower envelope)
-    envelope = np.full((w,), -1, dtype=int)
-    # Flip vertically so argmax finds the bottom-most pixel first
-    rev = edges[::-1, :]
-    has_any = rev.any(axis=0)
-    idx_in_rev = np.argmax(rev > 0, axis=0)
-
-    for x in range(w):
-        if has_any[x]:
-            envelope[x] = h - 1 - idx_in_rev[x]
-
-    # 6. Smooth the envelope with a median filter to remove noise
-    if smooth_ksize > 0:
-        ksize = smooth_ksize if smooth_ksize % 2 == 1 else smooth_ksize + 1
-        valid_mask = envelope >= 0
-        if valid_mask.sum() > ksize:
-            # Only smooth valid entries; keep -1 for invalid
-            temp = envelope.astype(np.float32).copy()
-            temp[~valid_mask] = np.nan
-            # Fill NaN gaps with nearest valid for filtering, then restore
-            filled = temp.copy()
-            # Forward fill
-            for i in range(1, w):
-                if np.isnan(filled[i]) and not np.isnan(filled[i-1]):
-                    filled[i] = filled[i-1]
-            # Backward fill
-            for i in range(w-2, -1, -1):
-                if np.isnan(filled[i]) and not np.isnan(filled[i+1]):
-                    filled[i] = filled[i+1]
-
-            if not np.isnan(filled).all():
-                filled = np.nan_to_num(filled, nan=0.0).astype(int)
-                # cv2.medianBlur only supports uint8, but envelope values can exceed 255.
-                # Use a manual sliding-window median instead.
-                half_k = ksize // 2
-                smoothed = filled.copy()
-                for i in range(half_k, w - half_k):
-                    smoothed[i] = int(np.median(filled[i - half_k : i + half_k + 1]))
-                # Restore invalids
-                envelope[valid_mask] = smoothed[valid_mask]
-
-    return envelope, edges, roi_rect
-
-
-# -------------------------
 # Stitch Measurement Application (Edge-Detection based)
 # -------------------------
 class StitchMeasurementApp:
-    """Detects stitches via YOLO; measures seam allowance using Canny edge detection
-    for the fabric edge instead of the YOLO fabric segmentation mask."""
+    """Detects fabric seams and measures distance from seam to fabric edge."""
+    
 
     def __init__(self, calib_path, extr_path, model_path, camera_index=0,
                  calib_w=640, calib_h=640, frame_buffer=8,
@@ -252,30 +143,50 @@ class StitchMeasurementApp:
         self.n_c, self.d_c = compute_camera_plane(self.R, self.t)
 
         self.model = YOLO(model_path)
-        self.cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)  # for linux
+        self.cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2) # for linux
         self.aw, self.ah = force_camera_resolution(self.cap, calib_w, calib_h)
 
         self.frame_buf_dist = deque(maxlen=frame_buffer)
         self.frame_buf_width = deque(maxlen=frame_buffer)
         self.min_stitches = min_stitches
         self.stitch_id = stitch_id
-        self.fabric_id = fabric_id  # kept for compatibility, not used for edge detection
+        self.fabric_id = fabric_id
         self.running = True
 
-        print("StitchMeasurementApp (Edge-Detection) initialized.")
+        print("StitchMeasurementApp initialized.")
         if LOG_DEBUG:
             print("Plane normal (camera coords):", self.n_c, "d_c:", self.d_c)
-            print(f"Edge detection params: Canny({EDGE_CANNY_LOW},{EDGE_CANNY_HIGH}), "
-                  f"blur={EDGE_BLUR_KERNEL}, dilate={EDGE_DILATE_KERNEL}, "
-                  f"ROI=({EDGE_ROI_LEFT_FRACTION}-{EDGE_ROI_RIGHT_FRACTION} W, "
-                  f"{EDGE_ROI_TOP_FRACTION}-{EDGE_ROI_BOTTOM_FRACTION} H), "
-                  f"smooth={EDGE_ENVELOPE_SMOOTH_KERNEL}")
+
+    def _combine_masks(self, mask_list, h, w):
+        """Combine multiple binary masks via bitwise OR."""
+        if not mask_list:
+            return None
+        combined = np.zeros((h, w), dtype=np.uint8)
+        for m in mask_list:
+            if m is not None and m.shape == (h, w):
+                combined = cv2.bitwise_or(combined, m.astype(np.uint8))
+        return combined
+
+    def _fabric_lower_envelope(self, fabric_mask):
+            """Trace the lower envelope (bottommost fabric pixel) per column.
+            Args:
+                fabric_mask: Binary mask of fabric area.
+            returns:
+                envelope: 1D array of y-coordinates of lower envelope per x-column having fabric; -1 if no fabric in that column.
+            """
+            h, w = fabric_mask.shape
+            envelope = np.full((w,), -1, dtype=int) #1-dimensional with length w.
+            rev = fabric_mask[::-1, :] # flips the rows of a 2D array while keeping the columns in order.
+            has_any = rev.any(axis=0)
+            idx_in_rev = np.argmax(rev > 0, axis=0) #This line is scanning the reversed mask column by column to find the first foreground pixel from the bottom.
+            for x in range(w): #Loops over each column of the mask.
+                if has_any[x]:
+                    envelope[x] = h - 1 - idx_in_rev[x] #idx_in_rev[x] row index in the reversed mask of the first foreground pixel from bottom.
+            return envelope
+
 
     def process_frame(self, frame):
         """Process frame to compute seam metrics and annotations.
-
-        Stitches are detected via YOLO model.
-        Fabric edge is detected via Canny edge detection.
 
         Args:
             frame: Input BGR image from camera.
@@ -291,24 +202,22 @@ class StitchMeasurementApp:
                     - 'error': str (optional) - error message if processing failed.
         """
         h, w = frame.shape[:2]
-        # rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        # --------------------------------------------------
-        # YOLO inference — detect STITCHES only
-        # --------------------------------------------------
         try:
-            results = self.model.predict(frame, verbose=False, conf=CONF_THRESH,
-                                         iou=IOU_THRESH, max_det=MAX_DETECTIONS,
-                                         imgsz=960)
+            results = self.model.predict(rgb, verbose=False, conf=CONF_THRESH, 
+                                        iou=IOU_THRESH, max_det=MAX_DETECTIONS,
+                                        imgsz=960)
             r = results[0]
         except Exception as e:
             print("Model inference error:", e)
             return frame.copy(), {'edge_distance_mm': None, 'stitch_width_mm': None,
-                                  'stitch_count': 0, 'timestamp': datetime.now(),
-                                  'error': 'Model inference failed'}
+                                 'stitch_count': 0, 'timestamp': datetime.now(),
+                                 'error': 'Model inference failed'}
+        
 
         annotated = frame.copy()
-        stitch_masks, stitch_boxes = [], []
+        stitch_masks, stitch_boxes, fabric_masks = [], [], []
 
         if hasattr(r, "boxes") and r.boxes is not None:
             try:
@@ -320,64 +229,56 @@ class StitchMeasurementApp:
             for i, cls_id in enumerate(cls_arr):
                 cid = int(cls_id)
                 x1, y1, x2, y2 = map(int, boxes[i])
+                mask = get_instance_mask_as_bitmap(r, i, h, w)
 
                 if cid == self.stitch_id:
-                    mask = get_instance_mask_as_bitmap(r, i, h, w)
+
                     stitch_masks.append(mask)
                     stitch_boxes.append((x1, y1, x2, y2))
                     cv2.rectangle(annotated, (x1, y1), (x2, y2), (255, 255, 0), 1)
+                elif cid == self.fabric_id:
+                    if mask is not None:
+                        fabric_masks.append(mask)
+                    cv2.rectangle(annotated, (x1, y1), (x2, y2), (255, 0, 255), 2)
 
         if LOG_DEBUG:
             valid_stitches = sum(1 for m in stitch_masks if m is not None and m.sum() > 0)
-            print(f"Detected: {len(stitch_masks)} stitches ({valid_stitches} valid)")
+            valid_fabrics = sum(1 for m in fabric_masks if m is not None and m.sum() > 0)
+            print(f"Detected: {len(stitch_masks)} stitches ({valid_stitches} valid), "
+                  f"{len(fabric_masks)} fabrics ({valid_fabrics} valid)")
 
-        # --------------------------------------------------
-        # Fabric edge via Canny edge detection
-        # --------------------------------------------------
-        envelope, edge_map, roi_rect = detect_fabric_edge_canny(frame)
-        roi_x1, roi_y1, roi_x2, roi_y2 = roi_rect
+        fabric_mask = self._combine_masks(fabric_masks, h, w)
+        if fabric_mask is None or np.count_nonzero(fabric_mask) == 0:
+            cv2.putText(annotated, "Fabric not detected", (10, 55),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
 
-        # Draw ROI rectangle on annotated frame for visualization
-        cv2.rectangle(annotated, (roi_x1, roi_y1), (roi_x2, roi_y2), (0, 255, 255), 2)
-        cv2.putText(annotated, "ROI", (roi_x1 + 5, roi_y1 + 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-
-        # Check if any edge was found
-        if (envelope >= 0).sum() == 0:
-            cv2.putText(annotated, "Fabric edge not detected (Canny)", (10, 55),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
             return annotated, {'edge_distance_mm': None, 'stitch_width_mm': None,
-                               'stitch_count': 0, 'timestamp': datetime.now(),
-                               'error': 'Fabric edge not detected'}
+                              'stitch_count': 0, 'timestamp': datetime.now(),
+                              'error': 'Fabric not detected'}
 
-        # Draw envelope on annotated frame
+        envelope = self._fabric_lower_envelope(fabric_mask)
+
+        # Draw envelope
         pts = [(x, envelope[x]) for x in range(w) if envelope[x] >= 0]
         if pts:
             step = max(1, len(pts) // 1000)
             poly = np.array(pts[::step], dtype=np.int32)
-            cv2.polylines(annotated, [poly], False, (255, 128, 0), 2)
+            cv2.polylines(annotated, [poly], False, (255,128,0), 2)
 
-        # Optionally overlay edge map for debugging
-        if LOG_DEBUG and EDGE_SHOW_CANNY_OVERLAY:
-            edge_color = np.zeros_like(annotated)
-            edge_color[:, :, 2] = edge_map  # red channel
-            annotated = cv2.addWeighted(annotated, 1.0, edge_color, 0.3, 0)
-
-        # --------------------------------------------------
         # Compute stitch centroids for ALL detected stitches
-        # --------------------------------------------------
+
         stitch_meta = []
         centroids_y = []
         for idx, mask in enumerate(stitch_masks):
             if mask is not None and mask.sum() > 0:
-                M = cv2.moments((mask > 0).astype(np.uint8))
+                M = cv2.moments((mask>0).astype(np.uint8))
                 if M["m00"] > 1e-6:
                     cx = float(M["m10"] / M["m00"])
                     cy = float(M["m01"] / M["m00"])
                 else:
                     x1, y1, x2, y2 = stitch_boxes[idx]
                     cx, cy = float((x1 + x2) / 2), float((y1 + y2) / 2)
-                cols = np.where(np.any(mask > 0, axis=0))[0]
+                cols = np.where(np.any(mask>0, axis=0))[0]
                 if cols.size > 0:
                     px_width = float(cols.max() - cols.min())
                     left_px, right_px = float(cols.min()), float(cols.max())
@@ -400,13 +301,14 @@ class StitchMeasurementApp:
 
         if len(stitch_meta) == 0:
             cv2.putText(annotated, "No stitches detected", (10, 55),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
             return annotated, {'edge_distance_mm': None, 'stitch_width_mm': None,
-                               'stitch_count': 0, 'timestamp': datetime.now(),
-                               'error': 'No stitches detected'}
+                              'stitch_count': 0, 'timestamp': datetime.now(),
+                              'error': 'No stitches detected'}
 
         # =====================================================
         # STEP 1: Compute stitch widths from ALL detected stitches
+        # (stitch length/width should use every stitch, regardless of row)
         # =====================================================
         all_widths = []
         all_indices = list(range(len(stitch_meta)))
@@ -425,41 +327,47 @@ class StitchMeasurementApp:
 
             # Draw width markers for all stitches
             cx_draw = stitch_meta[i]["cx"]
-            cv2.circle(annotated, (int(round(left_px)), int(round(cy))), 3, (200, 200, 0), -1)
-            cv2.circle(annotated, (int(round(right_px)), int(round(cy))), 3, (200, 200, 0), -1)
+            cv2.circle(annotated, (int(round(left_px)), int(round(cy))), 3, (200,200,0), -1)
+            cv2.circle(annotated, (int(round(right_px)), int(round(cy))), 3, (200,200,0), -1)
             cv2.line(annotated, (int(round(left_px)), int(round(cy))),
-                     (int(round(right_px)), int(round(cy))), (200, 200, 0), 1)
-            cv2.circle(annotated, (int(round(cx_draw)), int(round(cy))), 3, (200, 0, 0), -1)
+                     (int(round(right_px)), int(round(cy))), (200,200,0), 1)
+            cv2.circle(annotated, (int(round(cx_draw)), int(round(cy))), 3, (200,0,0), -1)
             if all_widths:
                 cv2.putText(annotated, f"{all_widths[-1]:.1f}",
-                            (int(round(cx_draw)) + 2, int(round(cy)) - 20),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 0, 0), 2)
+                           (int(round(cx_draw))+2, int(round(cy))-20),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0,0,0), 2)
 
         # =====================================================
         # STEP 2: Select stitches for SEAM ALLOWANCE (edge distance)
         # Only the row closest to the camera (highest y / closest to fabric edge)
         # =====================================================
         if SKIP_CLUSTER:
+            # When skipping clustering, pick the row closest to fabric edge
+            # by selecting stitches with y > median y (bottom half = close to camera)
             vals = np.array(centroids_y)
             if len(vals) >= 2:
                 median_y = np.median(vals)
+                # Check if there's meaningful spread (two rows exist)
                 y_range = vals.max() - vals.min()
                 if y_range > TWO_ROW_THRESHOLD_PX:
+                    # Select stitches in the bottom half (close to camera = high y = close to fabric edge)
                     selected_indices = [i for i, cy in enumerate(centroids_y) if cy >= median_y]
                 else:
+                    # All stitches are roughly in one row, keep all
                     selected_indices = list(range(len(centroids_y)))
             else:
                 selected_indices = list(range(len(centroids_y)))
         else:
+            # Use k-means clustering on y-coordinates
             if len(centroids_y) >= 2:
                 vals = np.array(centroids_y)
-                labels, _ = kmeans_1d_two_clusters(vals)
-                # Use envelope mean Y instead of fabric mask mean Y
+                labels, _ = kmeans_1d_two_clusters(vals)  # centers not needed, using mean of each cluster
+
                 fabric_validYs = envelope[envelope >= 0]
                 if fabric_validYs.size > 0:
                     fabric_mean_y = float(np.mean(fabric_validYs))
-                    c0_mean = float(vals[labels == 0].mean()) if (labels == 0).any() else 1e9
-                    c1_mean = float(vals[labels == 1].mean()) if (labels == 1).any() else 1e9
+                    c0_mean = float(vals[labels == 0].mean()) if (labels==0).any() else 1e9
+                    c1_mean = float(vals[labels == 1].mean()) if (labels==1).any() else 1e9
                     chosen_label = 0 if abs(c0_mean - fabric_mean_y) < abs(c1_mean - fabric_mean_y) else 1
                 else:
                     chosen_label = 0
@@ -472,8 +380,8 @@ class StitchMeasurementApp:
         for i in selected_indices:
             cx = int(round(stitch_meta[i]["cx"]))
             cy = stitch_meta[i]["cy"]
-            xs = [int(np.clip(cx + dx, 0, w - 1))
-                  for dx in range(-ENVELOPE_NEIGHBORHOOD, ENVELOPE_NEIGHBORHOOD + 1)]
+            xs = [int(np.clip(cx + dx, 0, w-1))
+                  for dx in range(-ENVELOPE_NEIGHBORHOOD, ENVELOPE_NEIGHBORHOOD+1)]
             env_vals = [envelope[x] for x in xs if envelope[x] >= 0]
             if len(env_vals) == 0:
                 continue
@@ -496,15 +404,15 @@ class StitchMeasurementApp:
         # =====================================================
         per_dists = []
         if LOG_DEBUG:
-            print(f"\n{'=' * 60}")
+            print(f"\n{'='*60}")
             print(f"Processing {len(final_indices)} stitches for seam allowance")
 
         for i in final_indices:
             cx, cy = stitch_meta[i]["cx"], stitch_meta[i]["cy"]
-            cx_int = int(np.clip(int(round(cx)), 0, w - 1))
+            cx_int = int(np.clip(int(round(cx)), 0, w-1))
 
-            xs = [int(np.clip(cx_int + dx, 0, w - 1))
-                  for dx in range(-ENVELOPE_NEIGHBORHOOD, ENVELOPE_NEIGHBORHOOD + 1)]
+            xs = [int(np.clip(cx_int + dx, 0, w-1))
+                  for dx in range(-ENVELOPE_NEIGHBORHOOD, ENVELOPE_NEIGHBORHOOD+1)]
             env_vals = [envelope[x] for x in xs if envelope[x] >= 0]
 
             if len(env_vals) > 0:
@@ -520,8 +428,8 @@ class StitchMeasurementApp:
                     dist_mm = float(np.linalg.norm(p_stitch - p_edge)) * 1000.0
                     per_dists.append(dist_mm)
                     cv2.line(annotated, (cx_int, int(round(edge_y))),
-                             (int(round(cx)), int(round(cy))), (0, 255, 0), 1)
-                    cv2.circle(annotated, (cx_int, int(round(edge_y))), 2, (255, 0, 255), -1)
+                            (int(round(cx)), int(round(cy))), (0,255,0), 1)
+                    cv2.circle(annotated, (cx_int, int(round(edge_y))), 2, (255,0,255), -1)
 
         # =====================================================
         # STEP 4: Compute averages
@@ -555,10 +463,15 @@ class StitchMeasurementApp:
         else:
             info_text = f"Insufficient stitches (dist={n_found_dist}, width={n_found_width}, need {self.min_stitches})"
 
-        cv2.putText(annotated, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-        detection_info = f"Stitches: {len(stitch_masks)} | Edge: Canny"
+        contours_vis, _ = cv2.findContours((fabric_mask>0).astype(np.uint8),
+                                          cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if contours_vis:
+            cv2.drawContours(annotated, contours_vis, -1, (0,0,255), 2)
+
+        cv2.putText(annotated, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
+        detection_info = f"Stitches: {len(stitch_masks)} | Fabric: {len(fabric_masks)}"
         cv2.putText(annotated, detection_info, (10, h - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
         return annotated, {
             'edge_distance_mm': smooth_dist,
@@ -571,9 +484,11 @@ class StitchMeasurementApp:
         """Continuous capture loop for standalone operation."""
         last_inference_time = 0
         frame_count = 0
-
-        os.makedirs(SAVE_DIR, exist_ok=True)
-        print(f"Saving annotated images to: {os.path.abspath(SAVE_DIR)}")
+        # Create session-specific folder for this run
+        session_start = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        session_dir = os.path.join(SAVE_DIR, session_start)
+        os.makedirs(session_dir, exist_ok=True)
+        print(f"Saving to: {os.path.abspath(session_dir)}")
 
         while self.running:
             ret, frame = self.cap.read()
@@ -587,7 +502,7 @@ class StitchMeasurementApp:
                 annotated, measurements = self.process_frame(frame)
 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                save_path = os.path.join(SAVE_DIR, f"frame_{frame_count:05d}_{timestamp}.jpg")
+                save_path = os.path.join(session_dir, f"frame_{frame_count:05d}_{timestamp}.jpg")
                 cv2.imwrite(save_path, annotated)
 
                 info = (f"Edge: {measurements.get('edge_distance_mm', 'N/A')}mm | "
