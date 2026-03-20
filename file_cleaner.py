@@ -35,51 +35,54 @@ class FileCleanerThread:
 
 
     def _delete_old_files(self):
-        '''
-         """Delete files older than retention period"""
-        
-        self : object
-        '''
-
+        """Delete files older than retention period (recursive)."""
         if not os.path.exists(self.directory):
-            print(f"Directory {self.directory} does not exist. Skipping cleanup.")
+            print(f"Cleanup skipped: directory not found -> {self.directory}")
             return
-        
-        current_time = datetime.now()
-        cutoff_time = current_time - timedelta(hours=self.retention_hours)
 
-        deleted_count = 0
-        deleted_size = 0
+        cutoff_time = datetime.now() - timedelta(hours=self.retention_hours)
+        deleted_files = 0
+        deleted_bytes = 0
 
         try:
-            for filename in os.listdir(self.directory):
-                filepath=os.path.join(self.directory,filename)
+            # Walk bottom-up so empty folders can be removed after file cleanup.
+            for root, _, files in os.walk(self.directory, topdown=False):
+                for filename in files:
+                    file_path = os.path.join(root, filename)
 
-                if not os.path.isfile(filepath):
-                    continue
-                
-                #get the file modification time
-                file_mtime=datetime.fromtimestamp(os.path.getmtime(filepath))
-
-                #delete if older than cutoff time
-                if file_mtime<cutoff_time:
                     try:
-                        file_size=os.path.getsize(filepath)
-                        os.remove(filepath)
-                        deleted_count+=1
-                        deleted_size+=file_size
-                        print(f"Deleted file: {filepath}, Size: {file_size} bytes")
-                        print(f"🗑️ Deleted: {filename} (age: {current_time-file_mtime})")
+                        mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
+                    except OSError as exc:
+                        print(f"Could not read mtime for {file_path}: {exc}")
+                        continue
 
-                    except Exception as e:
-                        print(f"Error deleting file {filepath}: {e}")
+                    if mtime < cutoff_time:
+                        try:
+                            file_size = os.path.getsize(file_path)
+                            os.remove(file_path)
+                            deleted_files += 1
+                            deleted_bytes += file_size
+                            print(f"Deleted old file: {file_path}")
+                        except OSError as exc:
+                            print(f"Failed deleting {file_path}: {exc}")
 
-            if deleted_count>0:
-                size_mb=deleted_size/(1024*1024)
-                print(f"✅ Cleanup complete: {deleted_count} files deleted ({size_mb:.2f} MB freed)")
+                # Remove empty session directories except root SAVE_DIR itself.
+                if root != self.directory:
+                    try:
+                        if not os.listdir(root):
+                            os.rmdir(root)
+                            print(f"Removed empty folder: {root}")
+                    except OSError:
+                        # Ignore non-empty or race-condition errors.
+                        pass
 
-        except Exception as e:
-            print(f"❌Error during cleanup: {e}")
+            if deleted_files:
+                freed_mb = deleted_bytes / (1024 * 1024)
+                print(f"Cleanup complete: {deleted_files} files removed, {freed_mb:.2f} MB freed")
+            else:
+                print("Cleanup complete: no files older than retention window")
+        except Exception as exc:
+            print(f"Cleanup error: {exc}")
 
 
     def _cleanup_loop(self):
