@@ -47,7 +47,7 @@ CAMERA_EXPOSURE = 3.5 # Manual exposure: -10 (darkest) to -4 (brightest). Adjust
 # -------------------------
 # YOLO Model Config
 # -------------------------
-MODEL_PATH = "best_Model.pt"
+MODEL_PATH = "single_needle_model.pt"
 # MODEL_PATH = "single_needle_model.pt"
 STITCH_CLASS_ID = 0   # model class id for stitch
 FABRIC_CLASS_ID = 1   # model class id for fabric
@@ -114,38 +114,6 @@ STITCH_LENGTH_CLAMP_RANGE = (3.8, 4.05)  # mm — replacement range (random unif
 FILE_RETENTION_HOURS = 24
 FILE_CLEANUP_INTERVAL_SECONDS = 3600
 
-# -------------------------
-# Edge Detection Config (for measurement_edge.py)
-# -------------------------
-EDGE_CANNY_LOW = 50           # Canny lower threshold
-EDGE_CANNY_HIGH = 150         # Canny upper threshold
-EDGE_BLUR_KERNEL = 5          # Gaussian blur kernel size (odd number, 0 = skip)
-EDGE_DILATE_KERNEL = 3        # Dilation kernel to bridge small edge gaps (0 = skip)
-EDGE_ROI_TOP_FRACTION = float(os.getenv("EDGE_ROI_TOP_FRACTION", "0.35"))
-EDGE_ROI_BOTTOM_FRACTION = float(os.getenv("EDGE_ROI_BOTTOM_FRACTION", "0.7"))
-EDGE_ROI_LEFT_FRACTION = float(os.getenv("EDGE_ROI_LEFT_FRACTION", "0.55"))
-EDGE_ROI_RIGHT_FRACTION = float(os.getenv("EDGE_ROI_RIGHT_FRACTION", "0.99"))
-
-if not 0.0 <= EDGE_ROI_TOP_FRACTION <= 1.0:
-    raise ValueError(f"EDGE_ROI_TOP_FRACTION must be between 0.0 and 1.0, got {EDGE_ROI_TOP_FRACTION}")
-
-if not 0.0 <= EDGE_ROI_BOTTOM_FRACTION <= 1.0:
-    raise ValueError(f"EDGE_ROI_BOTTOM_FRACTION must be between 0.0 and 1.0, got {EDGE_ROI_BOTTOM_FRACTION}")
-
-if not 0.0 <= EDGE_ROI_LEFT_FRACTION <= 1.0:
-    raise ValueError(f"EDGE_ROI_LEFT_FRACTION must be between 0.0 and 1.0, got {EDGE_ROI_LEFT_FRACTION}")
-
-if not 0.0 <= EDGE_ROI_RIGHT_FRACTION <= 1.0:
-    raise ValueError(f"EDGE_ROI_RIGHT_FRACTION must be between 0.0 and 1.0, got {EDGE_ROI_RIGHT_FRACTION}")
-
-if EDGE_ROI_TOP_FRACTION >= EDGE_ROI_BOTTOM_FRACTION:
-    raise ValueError("EDGE_ROI_TOP_FRACTION must be less than EDGE_ROI_BOTTOM_FRACTION")
-
-if EDGE_ROI_LEFT_FRACTION >= EDGE_ROI_RIGHT_FRACTION:
-    raise ValueError("EDGE_ROI_LEFT_FRACTION must be less than EDGE_ROI_RIGHT_FRACTION")
-
-EDGE_ENVELOPE_SMOOTH_KERNEL = 15  # Median filter kernel for smoothing envelope (odd, 0 = skip)
-EDGE_SHOW_CANNY_OVERLAY = False   # If True, overlay Canny edges in red on annotated frame (debug)
 
 # -------------------------
 # Activate live imshow windows
