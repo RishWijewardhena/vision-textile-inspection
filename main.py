@@ -145,7 +145,6 @@ def main():
     file_cleaner=FileCleanerThread()
     file_cleaner.start()
 
-
     # Initialize MQTT heartbeat
     heartbeat = None
     try:
@@ -179,6 +178,15 @@ def main():
     total_distance_mm = 0.0
     os.makedirs(SAVE_DIR, exist_ok=True)
 
+    # Create session-specific folder for this run
+    session_start = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    session_dir = os.path.join(SAVE_DIR, session_start)
+    os.makedirs(session_dir, exist_ok=True)
+    print(f"📁 Session folder: {os.path.abspath(session_dir)}")
+
+    CAMERA_RECONNECT_ATTEMPTS = 0
+    MAX_RECONNECT_ATTEMPTS = 10
+
     # Buffer for last 5 valid measurements
     valid_seam_buffer = deque(maxlen=5)
     valid_width_buffer = deque(maxlen=5)
@@ -187,11 +195,23 @@ def main():
         while True:
             ret, frame = measurement_app.cap.read()
             if not ret:
-                print("⚠️ No frame from camera, retrying...")
+                CAMERA_RECONNECT_ATTEMPTS += 1
+                print(f"⚠️ No frame from camera (attempt {CAMERA_RECONNECT_ATTEMPTS}/{MAX_RECONNECT_ATTEMPTS})")
+
+                if CAMERA_RECONNECT_ATTEMPTS >= MAX_RECONNECT_ATTEMPTS:
+                    print("❌ Camera disconnected. Attempting to reconnect...")
+                    measurement_app.cap.release()
+                    time.sleep(1)
+                    measurement_app.cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_V4L2)
+                    force_camera_resolution(measurement_app.cap, CALIB_W, CALIB_H)
+                    CAMERA_RECONNECT_ATTEMPTS = 0
+
                 time.sleep(0.1)
                 continue
-            
+
+            CAMERA_RECONNECT_ATTEMPTS = 0  # Reset on successful frame
             current_time = time.time()
+
             
             # Process frame at intervals
             if current_time - last_inference_time >= INFERENCE_INTERVAL:
@@ -277,7 +297,7 @@ def main():
                 
                 # Save annotated image
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                save_path = os.path.join(SAVE_DIR, f"frame_{frame_count:05d}_{timestamp}.jpg")
+                save_path = os.path.join(session_dir, f"frame_{frame_count:05d}_{timestamp}.jpg")
                 cv2.imwrite(save_path, annotated)
                 
                 if SHOW_WINDOWS:
