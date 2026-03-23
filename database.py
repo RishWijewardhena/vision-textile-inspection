@@ -99,8 +99,8 @@ class DatabaseHandler:
             self.connection.commit()
             
             if LOG_DEBUG:
-                print(f"📊 DB Insert: time={timestamp}, total={total_distance:.2f}mm, "
-                      f"length={stitch_length}, seam={seam_allowance:.2f}mm")
+                print(f"📊 DB Insert: time={timestamp}, total={total_distance:.1f}mm, "
+                      f"length={stitch_length:.1f}, seam={seam_allowance:.1f}mm")
             return True
             
         except mysql.connector.Error as e:
