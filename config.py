@@ -119,8 +119,8 @@ stitch_lower_limit=2.8 # mm — if stitch width is below this, it's
 ## applying offset
 ###############
 
-SEAM_LENGTH_OFFSET=-1.2 if os.getenv("SEAM_LENGTH_OFFSET") is None else float(os.getenv("SEAM_LENGTH_OFFSET"))
-STITCH_WIDTH_OFFSET=-1.8 if os.getenv("STITCH_WIDTH_OFFSET") is None else float(os.getenv("STITCH_WIDTH_OFFSET"))
+SEAM_LENGTH_OFFSET=-1.3 if os.getenv("SEAM_LENGTH_OFFSET") is None else float(os.getenv("SEAM_LENGTH_OFFSET"))
+STITCH_WIDTH_OFFSET=-1.0 if os.getenv("STITCH_WIDTH_OFFSET") is None else float(os.getenv("STITCH_WIDTH_OFFSET"))
 
 # -------------------------
 # file cleaner 
