@@ -188,8 +188,8 @@ def main():
     MAX_RECONNECT_ATTEMPTS = 10
 
     # Buffer for last 5 valid measurements
-    valid_seam_buffer = deque(maxlen=5)
-    valid_width_buffer = deque(maxlen=5)
+    valid_seam_buffer = deque([6.5] * 5, maxlen=5)
+    valid_width_buffer = deque([3.9] * 5, maxlen=5)
     
     try:
         while True:
