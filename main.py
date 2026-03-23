@@ -226,8 +226,15 @@ def main():
                 seam_length_mm = measurements.get('edge_distance_mm', None)  # top_distance
                 stitch_width_mm = measurements.get('stitch_width_mm', None)
 
+                #appliying offset 
+                # Apply offsets only when measurement is present
+                if seam_length_mm is not None:
+                    seam_length_mm += SEAM_LENGTH_OFFSET
+                if stitch_width_mm is not None:
+                    stitch_width_mm += STITCH_WIDTH_OFFSET
+
                 # Determine if this is a valid measurement
-                has_valid_measurement = (seam_length_mm is not None and stitch_width_mm is not None)
+                has_valid_measurement = (seam_length_mm is not None and seam_length_mm < Seam_upper_limit and stitch_width_mm is not None and stitch_width_mm < stitch_upper_limit)
                 
                 # If valid, save to buffer
                 if has_valid_measurement:
