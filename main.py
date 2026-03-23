@@ -234,8 +234,17 @@ def main():
                     stitch_width_mm += STITCH_WIDTH_OFFSET
 
                 # Determine if this is a valid measurement
-                has_valid_measurement = (seam_length_mm is not None and seam_length_mm < Seam_upper_limit and stitch_width_mm is not None and stitch_width_mm < stitch_upper_limit)
-                
+                valid_seam = (
+                    seam_length_mm is not None
+                    and Seam_lower_limit < seam_length_mm < Seam_upper_limit
+                )
+
+                valid_stitch = (
+                    stitch_width_mm is not None
+                    and stitch_lower_limit < stitch_width_mm < stitch_upper_limit
+                )
+
+                has_valid_measurement = valid_seam and valid_stitch                
                 # If valid, save to buffer
                 if has_valid_measurement:
                     valid_seam_buffer.append(seam_length_mm)
