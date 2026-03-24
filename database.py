@@ -64,6 +64,19 @@ class DatabaseHandler:
     #     except mysql.connector.Error as e:
     #         print(f"❌ Failed to create table: {e}")
     #       return False
+
+    def get_last_record_total_distance(self):
+        """Get the total distance of the last inserted record"""
+        try:
+            query = f"SELECT total_distance FROM `{self.config['table']}` ORDER BY timestamp DESC LIMIT 1"
+            self.cursor.execute(query)
+            result = self.cursor.fetchone()
+            if result:
+                return result[0]  # Return the total_distance value
+            return None
+        except Exception as e:
+            print(f"⚠️ Could not fetch last record total distance: {e}")
+            return None
     
     def insert_measurement(self, total_distance, stitch_length
                            , seam_allowance):
