@@ -99,25 +99,19 @@ INFERENCE_INTERVAL = 2  # seconds between inferences
 SAVE_DIR = "saved_annotations"
 LOG_DEBUG = True          # set True to print debug info
 
-# -------------------------
-# Stitch Length Clamping
-# -------------------------
-STITCH_LENGTH_CLAMP_ENABLED = False       # Set to False to disable clamping
-STITCH_LENGTH_MAX = 4.1                  # mm — if stitch length exceeds this, clamp it
-STITCH_LENGTH_CLAMP_RANGE = (3.8, 4.05)  # mm — replacement range (random uniform)
 
-######################
+#-------------------------
 # measurement validation thresholds (tuned based on observed data)
-#####################
+#-------------------------
 
 Seam_upper_limit = 8.0 # mm — if seam length exceeds this, it's likely a false positive
 stitch_upper_limit = 4.15# mm — if stitch width exceeds this, it's likely a false positive
 Seam_lower_limit=3.5 # mm — if seam length is below this, it's likely a false positive
 stitch_lower_limit=2.8 # mm — if stitch width is below this, it's
 
-########################
+#-------------------------
 ## applying offset
-###############
+#-------------------------
 
 SEAM_LENGTH_OFFSET=-1.3 if os.getenv("SEAM_LENGTH_OFFSET") is None else float(os.getenv("SEAM_LENGTH_OFFSET"))
 STITCH_WIDTH_OFFSET=-1.0 if os.getenv("STITCH_WIDTH_OFFSET") is None else float(os.getenv("STITCH_WIDTH_OFFSET"))
