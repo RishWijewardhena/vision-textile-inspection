@@ -290,9 +290,9 @@ def main():
                     # Insert to database
                     if db:  # redundant inner check removed
                         db.insert_measurement(
-                            total_distance=total_distance_mm,
-                            stitch_length=stitch_width_mm,
-                            seam_allowance=seam_length_mm if seam_length_mm is not None else 0.0,
+                            total_distance=round(total_distance_mm, 1),
+                            stitch_length=round(stitch_width_mm, 1),
+                            seam_allowance=round(seam_length_mm, 1) if seam_length_mm is not None else 0.0,
                         )
                     
                     # Fix 6: guard seam_length_mm against None in f-string
