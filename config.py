@@ -128,7 +128,7 @@ STITCH_WIDTH_OFFSET=-1.0 if os.getenv("STITCH_WIDTH_OFFSET") is None else float(
 # Delete after 24 hours, check every hour
 FILE_RETENTION_HOURS = 24
 FILE_CLEANUP_INTERVAL_SECONDS = 3600
-1
+
 
 # -------------------------
 # Activate live imshow windows
