@@ -292,7 +292,7 @@ def main():
                         db.insert_measurement(
                             total_distance=round(total_distance_mm, 1),
                             stitch_length=round(stitch_width_mm, 1),
-                            seam_allowance=round(seam_length_mm, 1) if seam_length_mm is not None else 0.0,
+                            seam_allowance=round(seam_length_mm, 1)
                         )
                     
                     # Fix 6: guard seam_length_mm against None in f-string
