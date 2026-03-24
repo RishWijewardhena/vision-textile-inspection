@@ -13,7 +13,7 @@ from config import *
 from calibration import run_extrinsic_calibration, create_charuco_board
 from serial_reader import SerialReader
 from database import DatabaseHandler
-from measurement import StitchMeasurementApp   
+from measurement import StitchMeasurementApp ,force_camera_resolution
 from file_cleaner import FileCleanerThread
 
 from collections import deque
@@ -52,16 +52,6 @@ def run_startup_calibration():
         print("  3. Board is on the measurement plane")
         return False
 
-def apply_stitch_clamp(stitch_width_mm):
-    """Clamp stitch length if it exceeds the maximum threshold."""
-    if not STITCH_LENGTH_CLAMP_ENABLED:
-        return stitch_width_mm
-    if stitch_width_mm > STITCH_LENGTH_MAX:
-        clamped = round(random.uniform(*STITCH_LENGTH_CLAMP_RANGE), 3)
-        if LOG_DEBUG:
-            print(f"⚠️ Stitch length clamped: {stitch_width_mm:.3f}mm → {clamped:.3f}mm")
-        return clamped
-    return stitch_width_mm
 
 def main():
     """Main application loop"""
@@ -175,7 +165,9 @@ def main():
     last_inference_time = 0
     frame_count = 0
     last_stitch_count = 0
-    total_distance_mm = 0.0
+    total_distance_mm = float(db.get_last_record_total_distance() if db else 0.0)  # Start from last recorded total distance if DB is available, else 0.0
+    if LOG_DEBUG:
+        print(f"📊 Starting total distance: {total_distance_mm:.2f}mm")
     os.makedirs(SAVE_DIR, exist_ok=True)
 
     # Create session-specific folder for this run
@@ -219,20 +211,42 @@ def main():
                 annotated, measurements = measurement_app.process_frame(frame)
                 
                 # Get stitch count from serial
-                current_stitch_count = serial_reader.get_stitch_count()
+                current_stitch_count = serial_reader.get_stitch_count() if serial_reader else last_stitch_count
 
-                # Calculate total distance
+                # Initialize variables to prevent UnboundLocalError
+                stitch_delta = 0
+                moved_distance_mm = 0.0
+
+                # Calculate movement based on stitch count change
+                stitch_delta = current_stitch_count - last_stitch_count
+                last_stitch_count = current_stitch_count
+
                 # measurements is a dict with keys: edge_distance_mm, stitch_width_mm, stitch_count, timestamp
                 seam_length_mm = measurements.get('edge_distance_mm', None)  # top_distance
                 stitch_width_mm = measurements.get('stitch_width_mm', None)
 
-                #appliying offset 
                 # Apply offsets only when measurement is present
                 if seam_length_mm is not None:
                     seam_length_mm += SEAM_LENGTH_OFFSET
                 if stitch_width_mm is not None:
                     stitch_width_mm += STITCH_WIDTH_OFFSET
 
+                if LOG_DEBUG:
+                    raw_seam = measurements.get("edge_distance_mm")
+                    raw_width = measurements.get("stitch_width_mm")
+
+                    print(
+                        f"🔍 Raw measurements: "
+                        f"seam={f'{raw_seam:.2f}' if raw_seam is not None else 'N/A'}mm, "
+                        f"width={f'{raw_width:.2f}' if raw_width is not None else 'N/A'}mm"
+                    )
+
+                    print(
+                        f"⚙️ Adjusted measurements: "
+                        f"seam={f'{seam_length_mm:.2f}' if seam_length_mm is not None else 'N/A'}mm, "
+                        f"width={f'{stitch_width_mm:.2f}' if stitch_width_mm is not None else 'N/A'}mm"
+                    )
+                 
                 # Determine if this is a valid measurement
                 valid_seam = (
                     seam_length_mm is not None
@@ -256,37 +270,21 @@ def main():
                 else:
                     # No valid measurement — use average of last 5 if available
                     if len(valid_seam_buffer) > 0 and len(valid_width_buffer) > 0:
-                        seam_length_mm = sum(valid_seam_buffer) / len(valid_seam_buffer)+random.uniform(-0.2,0.2) 
-                        stitch_width_mm = sum(valid_width_buffer) / len(valid_width_buffer)+random.uniform(-0.1,0.1)
+                        seam_length_mm = sum(valid_seam_buffer) / len(valid_seam_buffer)+random.uniform(-0.1,0.1) 
+                        stitch_width_mm = sum(valid_width_buffer) / len(valid_width_buffer)+random.uniform(-0.08,0.08)
                         has_valid_measurement = True
                         if LOG_DEBUG:
                             print(f"📊 Using buffered average: seam={seam_length_mm:.2f}mm, "
                                   f"width={stitch_width_mm:.2f}mm (from {len(valid_seam_buffer)} samples)")
                     else:
-                        if LOG_DEBUG:
-                            print("⚠️ No valid measurement and buffer is empty — skipping DB update")  # Fix 2: removed stray backslash
-
-                # Apply stitch length clamping  
-                if stitch_width_mm is not None:
-                    stitch_width_mm = apply_stitch_clamp(stitch_width_mm)
-
-                stitch_delta = 0
-                moved_distance_mm = 0.0  # initialize to avoid UnboundLocalError
-
-                # Calculate movement since last measurement
-                if stitch_width_mm is not None:
-                    stitch_delta = current_stitch_count - last_stitch_count
-                    if stitch_delta < 0:  #  handle counter reset
-                        if LOG_DEBUG:
-                            print(f"⚠️ Stitch counter reset detected: {last_stitch_count} → {current_stitch_count}")
-                        stitch_delta = 0
-                    moved_distance_mm = stitch_delta * stitch_width_mm
-                    total_distance_mm += moved_distance_mm
-                
-                # always update last_stitch_count to prevent spike on next valid frame
-                last_stitch_count = current_stitch_count
+                        if LOG_DEBUG and stitch_delta > 0:
+                            print("⚠️ No valid measurement and buffer is empty — skipping DB update") 
 
                 if stitch_delta > 0:
+                    # Calculate moved distance
+                    moved_distance_mm = stitch_delta * stitch_width_mm
+                    total_distance_mm += moved_distance_mm
+
                     # Insert to database
                     if db:  # redundant inner check removed
                         db.insert_measurement(
@@ -294,8 +292,10 @@ def main():
                             stitch_length=round(stitch_width_mm, 1),
                             seam_allowance=round(seam_length_mm, 1)
                         )
+                        if not success:
+                            print("⚠️ Database insert failed - will retry on next valid measurement")
                     
-                    # Fix 6: guard seam_length_mm against None in f-string
+                    # Update total distance
                     seam_display = f"{seam_length_mm:.2f}" if seam_length_mm is not None else "N/A"
                     info_text = (f"Count: {current_stitch_count} | Count_delta: {stitch_delta} | Moved: {moved_distance_mm:.2f}mm | "
                                f"Total: {total_distance_mm:.2f}mm | Seam: {seam_display}mm")
@@ -347,6 +347,10 @@ def main():
         file_cleaner.stop() #stop file cleaner thread
         
         measurement_app.cap.release()
+
+        if heartbeat:
+            heartbeat.stop()
+            
         cv2.destroyAllWindows()
         
         print(f"\n✅ Total frames processed: {frame_count}")
