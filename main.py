@@ -276,18 +276,15 @@ def main():
                         if LOG_DEBUG:
                             print(f"📊 Using buffered average: seam={seam_length_mm:.2f}mm, "
                                   f"width={stitch_width_mm:.2f}mm (from {len(valid_seam_buffer)} samples)")
-                    else:
-                        if LOG_DEBUG and stitch_delta > 0:
-                            print("⚠️ No valid measurement and buffer is empty — skipping DB update") 
 
-                if stitch_delta > 0:
+                if stitch_delta > 0 and has_valid_measurement:
                     # Calculate moved distance
                     moved_distance_mm = stitch_delta * stitch_width_mm
                     total_distance_mm += moved_distance_mm
 
                     # Insert to database
                     if db:  # redundant inner check removed
-                        db.insert_measurement(
+                        success = db.insert_measurement(
                             total_distance=round(total_distance_mm, 1),
                             stitch_length=round(stitch_width_mm, 1),
                             seam_allowance=round(seam_length_mm, 1)
