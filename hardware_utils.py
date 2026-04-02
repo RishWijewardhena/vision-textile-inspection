@@ -20,6 +20,7 @@ def find_camera():
     return cam_list[0]
 
 
-print(find_esp32())
-print(find_camera())
+if __name__ == "__main__":
+    print(find_esp32())
+    print(find_camera())
 
