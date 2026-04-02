@@ -5,7 +5,7 @@ import serial
 import threading
 import time
 from config import SERIAL_PORT, SERIAL_BAUDRATE, SERIAL_TIMEOUT, LOG_DEBUG
-
+from hardware_utils import find_esp32
 
 class SerialReader:
     """Reads stitch count from serial port in a separate thread"""
@@ -28,7 +28,7 @@ class SerialReader:
         """Establish serial connection"""
         try:
             self.serial_conn = serial.Serial(
-                port=config.SERIAL_PORT,
+                port=self.port,
                 baudrate=self.baudrate,
                 timeout=self.timeout
             )
@@ -53,19 +53,25 @@ class SerialReader:
             print("🔄 Serial reading thread started")
         return True
         
+    def _refresh_port(self):
+        detected = find_esp32()
+        if detected:
+            self.port = detected  # update runtime port
+
     def _try_reconnect(self):
-        """Attempt reconnect with rate limiting to avoid busy-loop retries."""
         now = time.time()
         if now - self._last_reconnect_attempt < self._reconnect_interval:
             return
         self._last_reconnect_attempt = now
-        print("[INFO] Serial port not available, trying reconnect...")
+
         if self.serial_conn:
             try:
                 self.serial_conn.close()
             except Exception:
                 pass
             self.serial_conn = None
+
+        self._refresh_port()   # <- re-detect ESP32 each reconnect attempt
         self.connect()
 
     def read_serial_data(self):
