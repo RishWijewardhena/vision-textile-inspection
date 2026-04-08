@@ -217,6 +217,26 @@ class StitchMeasurementApp:
         
 
         annotated = frame.copy()
+        roi_active = bool(ROI_ENABLED)
+        roi_bounds = None
+        if roi_active:
+            # Clamp ROI to current frame size to keep drawing/filtering safe.
+            x_min = max(0, min(int(ROI_X_MIN), w - 1))
+            x_max = max(0, min(int(ROI_X_MAX), w - 1))
+            y_min = max(0, min(int(ROI_Y_MIN), h - 1))
+            y_max = max(0, min(int(ROI_Y_MAX), h - 1))
+            if x_min < x_max and y_min < y_max:
+                roi_bounds = (x_min, y_min, x_max, y_max)
+                cv2.rectangle(
+                    annotated,
+                    (x_min, y_min),
+                    (x_max, y_max),
+                    ROI_BORDER_COLOR,
+                    ROI_BORDER_THICKNESS,
+                )
+            else:
+                roi_active = False
+
         stitch_masks, stitch_boxes, fabric_masks = [], [], []
 
         if hasattr(r, "boxes") and r.boxes is not None:
@@ -229,6 +249,16 @@ class StitchMeasurementApp:
             for i, cls_id in enumerate(cls_arr):
                 cid = int(cls_id)
                 x1, y1, x2, y2 = map(int, boxes[i])
+
+                if roi_active and roi_bounds is not None:
+                    bx_cx = 0.5 * (x1 + x2)
+                    bx_cy = 0.5 * (y1 + y2)
+                    rx1, ry1, rx2, ry2 = roi_bounds
+                    inside_roi = (rx1 <= bx_cx <= rx2) and (ry1 <= bx_cy <= ry2)
+                    if not inside_roi:
+                        # Reject both stitch and fabric detections outside ROI.
+                        continue
+
                 mask = get_instance_mask_as_bitmap(r, i, h, w)
 
                 if cid == self.stitch_id:
