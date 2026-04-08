@@ -9,6 +9,25 @@ from hardware_utils import find_esp32 ,find_camera
 # Load environment variables from .env file
 load_dotenv()
 
+
+def _env_bool(name, default):
+    """Parse boolean env values with a safe default."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_int(name, default):
+    """Parse integer env values with a safe default on invalid input."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
 # -------------------------
 # Camera Calibration Config
 # -------------------------
@@ -36,8 +55,6 @@ CAPTURE_DELAY = 5  # seconds before auto-capture in extrinsic calibration
 # CAMERA_INDEX = 1
 
 #Get the available camera matrix
-
-
 CAMERA_INDEX=find_camera()
 CALIB_W = 1280
 CALIB_H = 960
@@ -52,7 +69,7 @@ MODEL_PATH = "single_needle_model.pt"
 STITCH_CLASS_ID = 0   # model class id for stitch
 FABRIC_CLASS_ID = 1   # model class id for fabric
 CONF_THRESH = 0.20
-IOU_THRESH = 0.45 # measures the overlap between two bounding boxes (0 = no overlap, 1 = perfect overlap)
+IOU_THRESH = 0.25 # measures the overlap between two bounding boxes (0 = no overlap, 1 = perfect overlap)
 MAX_DETECTIONS = 200
 
 # -------------------------
@@ -65,6 +82,29 @@ MAX_PX_DISTANCE = 250    # max pixel distance between stitch centroid and fabric
 ENVELOPE_NEIGHBORHOOD = 3# columns around centroid to average envelope y
 SKIP_CLUSTER = False      # if True, don't try to cluster into 2 stitch lines
 TWO_ROW_THRESHOLD_PX = 30  # pixels — threshold for detecting "two distinct rows" of stitches
+
+# -------------------------
+# ROI Settings
+# -------------------------
+# ROI coordinates are in pixels relative to the camera frame.
+# Detections with centroids outside this box are ignored.
+ROI_ENABLED = _env_bool("ROI_ENABLED", True)
+ROI_X_MIN = _env_int("ROI_X_MIN", 10)
+ROI_X_MAX = _env_int("ROI_X_MAX", CALIB_W - 10)
+ROI_Y_MIN = _env_int("ROI_Y_MIN", 300)
+ROI_Y_MAX = _env_int("ROI_Y_MAX", CALIB_H - 200)
+ROI_BORDER_COLOR = (144, 238, 144)  # Light green (BGR)
+ROI_BORDER_THICKNESS = 2
+
+if ROI_ENABLED:
+    if not (0 <= ROI_X_MIN < ROI_X_MAX <= CALIB_W):
+        raise ValueError(
+            f"Invalid ROI X bounds: {ROI_X_MIN}..{ROI_X_MAX} for width {CALIB_W}"
+        )
+    if not (0 <= ROI_Y_MIN < ROI_Y_MAX <= CALIB_H):
+        raise ValueError(
+            f"Invalid ROI Y bounds: {ROI_Y_MIN}..{ROI_Y_MAX} for height {CALIB_H}"
+        )
 
 # -------------------------
 # Serial Communication
