@@ -21,21 +21,22 @@ def load_json(path):
         return json.load(f)
 
 def force_camera_resolution(cap, w, h):
-    """Set camera resolution and verify."""
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-    time.sleep(2)  # Allow camera to adjust
-    
+    time.sleep(2)
+
     aw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     ah = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    # Set auto exposure (V4L2 expects 1 = manual, 3 = auto)
-    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, CAMERA_AUTO_EXPOSURE)
-   
-    cap.set(cv2.CAP_PROP_EXPOSURE, CAMERA_EXPOSURE)  # Adjust this value
-    # Optional: set gain
-    # cap.set(cv2.CAP_PROP_GAIN, 50)
-    # cap.set(cv2.CAP_PROP_BRIGHTNESS, 150)
+    # Step 1: disable auto exposure FIRST
+    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, CAMERA_AUTO_EXPOSURE)  # 1 = manual
+    time.sleep(0.3)
+
+    # Step 2: now set absolute exposure (only works after switching to manual)
+    cap.set(cv2.CAP_PROP_EXPOSURE, CAMERA_EXPOSURE)
+
+    # Step 3: set gain
+    cap.set(cv2.CAP_PROP_GAIN, CAMERA_GAIN)
 
     if aw != w or ah != h:
         print(f"Warning: camera resolution {aw}x{ah}, expected {w}x{h}")
@@ -269,7 +270,7 @@ class StitchMeasurementApp:
                 elif cid == self.fabric_id:
                     if mask is not None:
                         fabric_masks.append(mask)
-                    cv2.rectangle(annotated, (x1, y1), (x2, y2), (255, 0, 255), 2)
+                    # cv2.rectangle(annotated, (x1, y1), (x2, y2), (255, 0, 255), 2) remove magenda annotation
 
         if LOG_DEBUG:
             valid_stitches = sum(1 for m in stitch_masks if m is not None and m.sum() > 0)
