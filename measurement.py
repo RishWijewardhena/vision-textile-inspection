@@ -32,11 +32,18 @@ def force_camera_resolution(cap, w, h):
     cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, CAMERA_AUTO_EXPOSURE)  # 1 = manual
     time.sleep(0.3)
 
-    # Step 2: now set absolute exposure (only works after switching to manual)
-    cap.set(cv2.CAP_PROP_EXPOSURE, CAMERA_EXPOSURE)
+    # Step 2: set absolute exposure only when manual exposure mode is selected.
+    is_manual_exposure = float(CAMERA_AUTO_EXPOSURE) == 1.0
+    if is_manual_exposure:
+        cap.set(cv2.CAP_PROP_EXPOSURE, CAMERA_EXPOSURE)
+    elif LOG_DEBUG:
+        print("Auto exposure enabled; skipping manual CAP_PROP_EXPOSURE set")
 
-    # Step 3: set gain
-    cap.set(cv2.CAP_PROP_GAIN, CAMERA_GAIN)
+    # Step 3: set gain only in manual exposure mode.
+    if is_manual_exposure:
+        cap.set(cv2.CAP_PROP_GAIN, CAMERA_GAIN)
+    elif LOG_DEBUG:
+        print("Auto exposure enabled; skipping manual CAP_PROP_GAIN set")
 
     if aw != w or ah != h:
         print(f"Warning: camera resolution {aw}x{ah}, expected {w}x{h}")
