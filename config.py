@@ -49,17 +49,29 @@ MARKER_LENGTH = 0.008   # meters (adjust as needed)
 MIN_CHARUCO_CORNERS = 6 #as per the openCV documentation
 CAPTURE_DELAY = 5  # seconds before auto-capture in extrinsic calibration
 
+# # -------------------------
+# # Camera Settings
+# # -------------------------
+# # CAMERA_INDEX = 1
+
+# #Get the available camera matrix
+# CAMERA_INDEX=find_camera()
+# CALIB_W = 1280
+# CALIB_H = 960
+# CAMERA_AUTO_EXPOSURE = 3  # V4L2: 1 = manual, 3 = auto
+# CAMERA_EXPOSURE = 3.5 # Manual exposure: -10 (darkest) to -4 (brightest). Adjust for lighting conditions.
+
 # -------------------------
 # Camera Settings
 # -------------------------
-# CAMERA_INDEX = 1
-
-#Get the available camera matrix
 CAMERA_INDEX=find_camera()
+CAMERA_AUTO_EXPOSURE = 1        # V4L2: 1 = Manual Mode, 3 = Aperture Priority
+CAMERA_EXPOSURE = 30      # absolute units: 50–10000 (166 is default/auto equiv)
+# CAMERA_EXPOSURE_WHITE = 120     # darker setting for white/bright fabric
+CAMERA_GAIN = 60               # default gain — lower this too if overexposed
+# CAMERA_GAIN_WHITE = 40          # reduced gain for white fabric
 CALIB_W = 1280
 CALIB_H = 960
-CAMERA_AUTO_EXPOSURE = 3  # V4L2: 1 = manual, 3 = auto
-CAMERA_EXPOSURE = 3.5 # Manual exposure: -10 (darkest) to -4 (brightest). Adjust for lighting conditions.
 
 # -------------------------
 # YOLO Model Config
@@ -78,9 +90,9 @@ MAX_DETECTIONS = 200
 FRAME_BUFFER = 8          # median filter across frames
 MIN_STITCHES = 3          # minimum stitches to compute average
 MAX_EDGE_CANDIDATES = 20  # number of nearest contour points to try per stitch
-MAX_PX_DISTANCE = 250    # max pixel distance between stitch centroid and fabric edge (reduced for tighter filtering)
-ENVELOPE_NEIGHBORHOOD = 3# columns around centroid to average envelope y
-SKIP_CLUSTER = False      # if True, don't try to cluster into 2 stitch lines
+MAX_PX_DISTANCE = 300    # max pixel distance between stitch centroid and fabric edge (reduced for tighter filtering)
+ENVELOPE_NEIGHBORHOOD = 5# columns around centroid to average envelope y
+SKIP_CLUSTER = True      # if True, don't try to cluster into 2 stitch lines
 TWO_ROW_THRESHOLD_PX = 30  # pixels — threshold for detecting "two distinct rows" of stitches
 
 # -------------------------
@@ -89,7 +101,7 @@ TWO_ROW_THRESHOLD_PX = 30  # pixels — threshold for detecting "two distinct ro
 # ROI coordinates are in pixels relative to the camera frame.
 # Detections with centroids outside this box are ignored.
 ROI_ENABLED = _env_bool("ROI_ENABLED", True)
-ROI_X_MIN = _env_int("ROI_X_MIN", 10)
+ROI_X_MIN = _env_int("ROI_X_MIN", 100)
 ROI_X_MAX = _env_int("ROI_X_MAX", CALIB_W - 10)
 ROI_Y_MIN = _env_int("ROI_Y_MIN", 300)
 ROI_Y_MAX = _env_int("ROI_Y_MAX", CALIB_H - 200)
