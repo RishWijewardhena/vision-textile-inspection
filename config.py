@@ -77,9 +77,9 @@ CAPTURE_DELAY = 5  # seconds before auto-capture in extrinsic calibration
 # -------------------------
 CAMERA_INDEX=find_camera()
 CAMERA_AUTO_EXPOSURE = 1        # V4L2: 1 = Manual Mode, 3 = Aperture Priority
-CAMERA_EXPOSURE = 30      # absolute units: 50–10000 (166 is default/auto equiv)
+CAMERA_EXPOSURE = 50      # absolute units: 50–10000 (166 is default/auto equiv)
 # CAMERA_EXPOSURE_WHITE = 120     # darker setting for white/bright fabric
-CAMERA_GAIN = 60               # default gain — lower this too if overexposed
+CAMERA_GAIN = 30               # default gain — lower this too if overexposed
 # CAMERA_GAIN_WHITE = 40          # reduced gain for white fabric
 CALIB_W = 1280
 CALIB_H = 960
