@@ -28,6 +28,17 @@ def _env_int(name, default):
     except ValueError:
         return default
 
+
+def _env_float(name, default):
+    """Parse float env values with a safe default on invalid input."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
 # -------------------------
 # Camera Calibration Config
 # -------------------------
@@ -81,7 +92,7 @@ MODEL_PATH = "single_needle_model.pt"
 STITCH_CLASS_ID = 0   # model class id for stitch
 FABRIC_CLASS_ID = 1   # model class id for fabric
 CONF_THRESH = 0.20
-IOU_THRESH = 0.25 # measures the overlap between two bounding boxes (0 = no overlap, 1 = perfect overlap)
+IOU_THRESH = 0.20 # measures the overlap between two bounding boxes (0 = no overlap, 1 = perfect overlap)
 MAX_DETECTIONS = 200
 
 # -------------------------
@@ -94,6 +105,10 @@ MAX_PX_DISTANCE = 300    # max pixel distance between stitch centroid and fabric
 ENVELOPE_NEIGHBORHOOD = 5# columns around centroid to average envelope y
 SKIP_CLUSTER = True      # if True, don't try to cluster into 2 stitch lines
 TWO_ROW_THRESHOLD_PX = 30  # pixels — threshold for detecting "two distinct rows" of stitches
+
+# Outlier filtering (MAD)
+OUTLIER_MIN_SAMPLES = _env_int("OUTLIER_MIN_SAMPLES", 4)
+OUTLIER_MAD_SCALE = _env_float("OUTLIER_MAD_SCALE", 2.5)
 
 # -------------------------
 # ROI Settings
