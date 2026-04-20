@@ -171,8 +171,8 @@ LOG_DEBUG = True          # set True to print debug info
 # measurement validation thresholds (tuned based on observed data)
 #-------------------------
 
-Seam_upper_limit = 8.0 # mm — if seam length exceeds this, it's likely a false positive
-stitch_upper_limit = 4.15# mm — if stitch width exceeds this, it's likely a false positive
+Seam_upper_limit = 7.5 # mm — if seam length exceeds this, it's likely a false positive
+stitch_upper_limit = 4.25# mm — if stitch width exceeds this, it's likely a false positive
 Seam_lower_limit=3.5 # mm — if seam length is below this, it's likely a false positive
 stitch_lower_limit=2.8 # mm — if stitch width is below this, it's
 
