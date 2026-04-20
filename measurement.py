@@ -114,6 +114,37 @@ def kmeans_1d_two_clusters(values, max_iters=10):
     return labels, (c0, c1)
 
 
+def filtered_mean(values, min_samples=4, mad_scale=3.0):
+    """Return mean after MAD-based outlier rejection with safe fallbacks."""
+    if not values:
+        return None, 0, 0
+
+    arr = np.array(values, dtype=np.float64)
+    total_count = int(arr.size)
+
+    # Not enough points for robust filtering; keep all points.
+    if total_count < min_samples:
+        return float(arr.mean()), total_count, total_count
+
+    median = float(np.median(arr))
+    abs_dev = np.abs(arr - median)
+    mad = float(np.median(abs_dev))
+
+    # Near-identical values should not be filtered.
+    if mad < 1e-9:
+        return float(arr.mean()), total_count, total_count
+
+    robust_z = 0.6745 * abs_dev / mad
+    inlier_mask = robust_z <= mad_scale
+    inliers = arr[inlier_mask]
+
+    # If all points are removed, fall back to the raw mean.
+    if inliers.size == 0:
+        return float(arr.mean()), total_count, total_count
+
+    return float(inliers.mean()), int(inliers.size), total_count
+
+
 # -------------------------
 # Stitch Measurement Application (Edge-Detection based)
 # -------------------------
@@ -463,36 +494,52 @@ class StitchMeasurementApp:
                     cv2.circle(annotated, (cx_int, int(round(edge_y))), 2, (255,0,255), -1)
 
         # =====================================================
-        # STEP 4: Compute averages
-        # Edge distance: only from close row
-        # Stitch width: from ALL stitches
+        # STEP 4: Robust per-frame averages (MAD outlier filtering)
         # =====================================================
-        n_found_dist = len(per_dists)
-        n_found_width = len(all_widths)
-        avg_dist = float(np.mean(per_dists)) if len(per_dists) >= self.min_stitches else None
-        avg_width = float(np.mean(all_widths)) if len(all_widths) >= self.min_stitches else None
+        dist_mean, dist_inliers, dist_total = filtered_mean(
+            per_dists,
+            min_samples=OUTLIER_MIN_SAMPLES,
+            mad_scale=OUTLIER_MAD_SCALE,
+        )
+        width_mean, width_inliers, width_total = filtered_mean(
+            all_widths,
+            min_samples=OUTLIER_MIN_SAMPLES,
+            mad_scale=OUTLIER_MAD_SCALE,
+        )
 
-        if avg_dist is not None:
-            self.frame_buf_dist.append(avg_dist)
+        if LOG_DEBUG:
+            print(
+                f"MAD filter -> seam inliers: {dist_inliers}/{dist_total}, "
+                f"stitch inliers: {width_inliers}/{width_total}"
+            )
+
+        if dist_mean is not None and dist_inliers >= self.min_stitches:
+            self.frame_buf_dist.append(dist_mean)
             smooth_dist = float(np.median(self.frame_buf_dist))
         else:
             smooth_dist = None
 
-        if avg_width is not None:
-            self.frame_buf_width.append(avg_width)
+        if width_mean is not None and width_inliers >= self.min_stitches:
+            self.frame_buf_width.append(width_mean)
             smooth_width = float(np.median(self.frame_buf_width))
         else:
             smooth_width = None
 
         # Display info
         if smooth_dist is not None and smooth_width is not None:
-            info_text = f"Edge Dist: {smooth_dist:.2f}mm | Avg Width: {smooth_width:.2f}mm (n_d={n_found_dist}, n_w={n_found_width})"
+            info_text = (
+                f"Edge Dist: {smooth_dist:.2f}mm | Avg Width: {smooth_width:.2f}mm "
+                f"(seam {dist_inliers}/{dist_total}, stitch {width_inliers}/{width_total})"
+            )
         elif smooth_dist is not None:
-            info_text = f"Edge Distance: {smooth_dist:.2f}mm (n={n_found_dist})"
+            info_text = f"Edge Distance: {smooth_dist:.2f}mm (seam {dist_inliers}/{dist_total})"
         elif smooth_width is not None:
-            info_text = f"Avg Width: {smooth_width:.2f}mm (n={n_found_width})"
+            info_text = f"Avg Width: {smooth_width:.2f}mm (stitch {width_inliers}/{width_total})"
         else:
-            info_text = f"Insufficient stitches (dist={n_found_dist}, width={n_found_width}, need {self.min_stitches})"
+            info_text = (
+                f"Insufficient stitches (seam {dist_inliers}/{dist_total}, "
+                f"stitch {width_inliers}/{width_total}, need {self.min_stitches})"
+            )
 
         contours_vis, _ = cv2.findContours((fabric_mask>0).astype(np.uint8),
                                           cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -507,7 +554,7 @@ class StitchMeasurementApp:
         return annotated, {
             'edge_distance_mm': smooth_dist,
             'stitch_width_mm': smooth_width,
-            'stitch_count': n_found_dist,
+            'stitch_count': dist_inliers,
             'timestamp': datetime.now()
         }
 
