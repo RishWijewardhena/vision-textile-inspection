@@ -43,7 +43,7 @@ def _env_float(name, default):
 # Camera Calibration Config
 # -------------------------
 INTRINSICS_FILE = "camera_calibration.json"
-EXTRINSICS_FILE = "extrinsics.json"
+EXTRINSICS_FILE = "camera_extrinsics.json"
 
 # DICT_TYPE = cv2.aruco.DICT_5X5_250
 # SQUARES_X = 5 # number of squares in X direction    old setup
