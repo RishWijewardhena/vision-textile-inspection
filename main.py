@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import cv2
+import threading
 from datetime import datetime
 import random
 
@@ -141,6 +142,12 @@ def main():
 
     # Initialize MQTT heartbeat
     heartbeat = None
+    reset_requested = threading.Event()
+
+    def queue_reset_request():
+        """Queue reset work to run inside the main loop thread."""
+        reset_requested.set()
+
     try:
         # Use MQTT constants from config.py if you added them,
         heartbeat = MqttHeartbeat(
@@ -151,9 +158,14 @@ def main():
             topic=MQTT_HEARTBEAT_TOPIC,
             interval_sec=MQTT_HEARTBEAT_INTERVAL,
             tls_insecure=MQTT_TLS_INSECURE,
+            reset_topic=MQTT_RESET_TOPIC,
+            on_reset=queue_reset_request,
         )
         heartbeat.start()
-        print(f"✅ MQTT heartbeat started: {MQTT_HEARTBEAT_TOPIC} (every {MQTT_HEARTBEAT_INTERVAL}s)")
+        print(
+            f"✅ MQTT heartbeat started: {MQTT_HEARTBEAT_TOPIC} "
+            f"(every {MQTT_HEARTBEAT_INTERVAL}s), reset listener: {MQTT_RESET_TOPIC}"
+        )
     except Exception as e:
         print(f"⚠️ MQTT heartbeat not started: {e} (continuing without heartbeat)")
 
@@ -166,6 +178,7 @@ def main():
     print("="*60 + "\n")
     
     # Step 3: Main measurement loop
+    RESET_POST_DELAY_SEC = 2.0
     last_inference_time = 0
     frame_count = 0
     last_stitch_count = 0
@@ -188,9 +201,59 @@ def main():
     # Buffer for last 5 valid measurements
     valid_seam_buffer = deque([6.5] * 5, maxlen=5)
     valid_width_buffer = deque([3.9] * 5, maxlen=5)
+
+    def perform_reset():
+        """Reset DB values, ESP32 count, and runtime smoothing state."""
+        nonlocal total_distance_mm, last_stitch_count
+
+        print("🔁 Processing reset command...")
+
+        db_success = False
+        if db:
+            db_success = db.insert_measurement(
+                total_distance=0.0,
+                stitch_length=0.0,
+                seam_allowance=0.0,
+            )
+            if db_success:
+                print("✅ DB reset row inserted (0,0,0)")
+            else:
+                print("⚠️ DB reset row insert failed")
+        else:
+            print("⚠️ DB unavailable for reset row insert")
+
+        serial_success = False
+        if serial_reader:
+            serial_success = serial_reader.send_command("R")
+            if serial_success:
+                print("✅ Serial reset command sent: R")
+            else:
+                print("⚠️ Serial reset command failed")
+        else:
+            print("⚠️ Serial reader unavailable for reset command")
+
+        # Give ESP32 time to apply reset before using stitch count baseline again.
+        time.sleep(RESET_POST_DELAY_SEC)
+
+        total_distance_mm = 0.0
+        last_stitch_count = serial_reader.get_stitch_count() if serial_reader else 0
+        valid_seam_buffer.clear()
+        valid_width_buffer.clear()
+        valid_seam_buffer.extend([6.5] * 5)
+        valid_width_buffer.extend([3.9] * 5)
+        print("✅ Runtime counters and buffers reset")
+
+        if db_success and serial_success and heartbeat:
+            heartbeat.publish_reset_success()
+            print(f"✅ MQTT reset acknowledgment published: {MQTT_RESET_TOPIC} -> reset_success")
+
     
     try:
         while True:
+            if reset_requested.is_set():
+                reset_requested.clear()
+                perform_reset()
+
             ret, frame = measurement_app.cap.read()
             if not ret:
                 CAMERA_RECONNECT_ATTEMPTS += 1
