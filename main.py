@@ -59,18 +59,22 @@ def main():
     print("🧵 STITCH MEASUREMENT SYSTEM")
     print("="*60)
     
-    # Step 1: Run calibration
-    try:
-        calibrated = run_startup_calibration()
-        if not calibrated:
-            sys.exit(1) # Exit if calibration failed
+    # commenting out the extrinsics calibration for speed, but you can uncomment to run calibration at startup. Just make sure to have the ChArUco board in view and good lighting for it to work.
 
-    except Exception as e:
+    # # Step 1: Run calibration
+    # try:
+    #     calibrated = run_startup_calibration()
+    #     if not calibrated:
+    #         sys.exit(1) # Exit if calibration failed
+
+    # except Exception as e:
         
-        print(f"\n❌ Calibration error: {e}")
-        sys.exit(1)
+    #     print(f"\n❌ Calibration error: {e}")
+    #     sys.exit(1)
     
-    time.sleep(1)  # Brief pause after calibration
+    # time.sleep(1)  # Brief pause after calibration
+
+
     
     # Step 2: Initialize all components
     print("\n📡 Initializing components...")
@@ -165,7 +169,9 @@ def main():
     last_inference_time = 0
     frame_count = 0
     last_stitch_count = 0
-    total_distance_mm = float(db.get_last_record_total_distance() if db else 0.0)  # Start from last recorded total distance if DB is available, else 0.0
+
+    # step 3.1: Getting last total distance from DB to continue from previous session if available
+    total_distance_mm = float(db.get_last_record_total_distance() if db else 0.0) 
     if LOG_DEBUG:
         print(f"📊 Starting total distance: {total_distance_mm:.2f}mm")
     os.makedirs(SAVE_DIR, exist_ok=True)
