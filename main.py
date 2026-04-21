@@ -247,11 +247,11 @@ def main():
                         f"width={f'{raw_width:.2f}' if raw_width is not None else 'N/A'}mm"
                     )
 
-                    print(
-                        f"⚙️ Adjusted measurements: "
-                        f"seam={f'{seam_length_mm:.2f}' if seam_length_mm is not None else 'N/A'}mm, "
-                        f"width={f'{stitch_width_mm:.2f}' if stitch_width_mm is not None else 'N/A'}mm"
-                    )
+                    # print(
+                    #     f"⚙️ Adjusted measurements: "
+                    #     f"seam={f'{seam_length_mm:.2f}' if seam_length_mm is not None else 'N/A'}mm, "
+                    #     f"width={f'{stitch_width_mm:.2f}' if stitch_width_mm is not None else 'N/A'}mm"
+                    # )
                  
                 # Determine if this is a valid measurement
                 valid_seam = (
@@ -276,8 +276,10 @@ def main():
                 else:
                     # No valid measurement — use average of last 5 if available
                     if len(valid_seam_buffer) > 0 and len(valid_width_buffer) > 0:
-                        seam_length_mm = sum(valid_seam_buffer) / len(valid_seam_buffer)+random.uniform(-0.1,0.1) 
-                        stitch_width_mm = sum(valid_width_buffer) / len(valid_width_buffer)+random.uniform(-0.08,0.08)
+                        # seam_length_mm = sum(valid_seam_buffer) / len(valid_seam_buffer)+random.uniform(-0.1,0.1) 
+                        # stitch_width_mm = sum(valid_width_buffer) / len(valid_width_buffer)+random.uniform(-0.08,0.08)
+                        seam_length_mm = sum(valid_seam_buffer) / len(valid_seam_buffer)
+                        stitch_width_mm = sum(valid_width_buffer) / len(valid_width_buffer)
                         has_valid_measurement = True
                         if LOG_DEBUG:
                             print(f"📊 Using buffered average: seam={seam_length_mm:.2f}mm, "
