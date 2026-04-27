@@ -98,7 +98,7 @@ MAX_DETECTIONS = 200
 # -------------------------
 # Measurement Settings
 # -------------------------
-FRAME_BUFFER = 8          # median filter across frames
+FRAME_BUFFER = 2          # median filter across frames
 MIN_STITCHES = 3          # minimum stitches to compute average
 MAX_EDGE_CANDIDATES = 20  # number of nearest contour points to try per stitch
 MAX_PX_DISTANCE = 300    # max pixel distance between stitch centroid and fabric edge (reduced for tighter filtering)
