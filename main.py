@@ -296,9 +296,13 @@ def main():
 
                 # Apply offsets only when measurement is present
                 if seam_length_mm is not None:
-                    seam_length_mm += SEAM_LENGTH_OFFSET
+                    cv2.putText(annotated, f"Adjusted seam: {(seam_length_mm := seam_length_mm + SEAM_LENGTH_OFFSET):.2f}mm", (20, 90), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                                
                 if stitch_width_mm is not None:
-                    stitch_width_mm += STITCH_WIDTH_OFFSET
+                    cv2.putText(annotated, f"Adjusted width: {(stitch_width_mm := stitch_width_mm + STITCH_WIDTH_OFFSET):.2f}mm", (20, 120), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                
 
                 if LOG_DEBUG:
                     raw_seam = measurements.get("edge_distance_mm")
