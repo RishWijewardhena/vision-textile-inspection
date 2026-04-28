@@ -6,6 +6,7 @@ import threading
 import time
 from config import SERIAL_PORT, SERIAL_BAUDRATE, SERIAL_TIMEOUT, LOG_DEBUG
 from hardware_utils import find_esp32
+import subprocess
 
 class SerialReader:
     """Reads stitch count from serial port in a separate thread"""
@@ -65,6 +66,7 @@ class SerialReader:
             return
         self._last_reconnect_attempt = now
 
+        # Close existing connection
         if self.serial_conn:
             try:
                 self.serial_conn.close()
@@ -72,7 +74,17 @@ class SerialReader:
                 pass
             self.serial_conn = None
 
-        self._refresh_port()   # <- re-detect ESP32 each reconnect attempt
+        # 🔄 Reload ESP32 serial driver
+        print("🔄 Reloading ESP32 serial driver...")
+        try:
+            subprocess.run(["sudo", "modprobe", "-r", "cdc_acm"], check=True)
+            subprocess.run(["sudo", "modprobe", "cdc_acm"], check=True)
+            print("✅ ESP32 serial driver reloaded")
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️ Failed to reload ESP32 driver: {e}")
+
+        # Re-detect and reconnect
+        self._refresh_port()
         self.connect()
 
     def read_serial_data(self):
