@@ -16,6 +16,7 @@ from serial_reader import SerialReader
 from database import DatabaseHandler
 from measurement import StitchMeasurementApp ,force_camera_resolution
 from file_cleaner import FileCleanerThread
+from hardware_utils import find_camera
 
 from collections import deque
 
@@ -260,15 +261,22 @@ def main():
                 print(f"⚠️ No frame from camera (attempt {CAMERA_RECONNECT_ATTEMPTS}/{MAX_RECONNECT_ATTEMPTS})")
 
                 if CAMERA_RECONNECT_ATTEMPTS >= MAX_RECONNECT_ATTEMPTS:
-                    print("❌ Camera disconnected. Attempting to reconnect...")
+                    print("❌ Camera disconnected. Reloading usb_storage and attempting reconnect...")
+
+                    reload_usb_storage()
+
                     measurement_app.cap.release()
-                    time.sleep(1)
-                    measurement_app.cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_V4L2)
+                    time.sleep(2)
+
+                    new_camera_index = find_camera()
+                    print(f"🔁 Re-detected camera: {new_camera_index}")
+
+                    measurement_app.cap = cv2.VideoCapture(new_camera_index, cv2.CAP_V4L2)
                     force_camera_resolution(measurement_app.cap, CALIB_W, CALIB_H)
                     CAMERA_RECONNECT_ATTEMPTS = 0
 
-                time.sleep(0.1)
-                continue
+                    time.sleep(0.1)
+                    continue
 
             CAMERA_RECONNECT_ATTEMPTS = 0  # Reset on successful frame
             current_time = time.time()
