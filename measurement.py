@@ -1,5 +1,4 @@
 # measurement.py
-# Same as measurement.py but uses Canny edge detection for fabric edge
 # instead of YOLO fabric segmentation mask.
 import os
 import json
