@@ -76,7 +76,7 @@ CAPTURE_DELAY = 5  # seconds before auto-capture in extrinsic calibration
 # Camera Settings
 # -------------------------
 CAMERA_INDEX=find_camera()
-CAMERA_AUTO_EXPOSURE = 1        # V4L2: 1 = Manual Mode, 3 = Aperture Priority
+CAMERA_AUTO_EXPOSURE = 3        # V4L2: 1 = Manual Mode, 3 = Aperture Priority
 CAMERA_EXPOSURE = 50      # absolute units: 50–10000 (166 is default/auto equiv)
 # CAMERA_EXPOSURE_WHITE = 120     # darker setting for white/bright fabric
 CAMERA_GAIN = 30               # default gain — lower this too if overexposed
@@ -175,6 +175,13 @@ Seam_upper_limit = 7.5 # mm — if seam length exceeds this, it's likely a false
 stitch_upper_limit = 4.25# mm — if stitch width exceeds this, it's likely a false positive
 Seam_lower_limit=3.5 # mm — if seam length is below this, it's likely a false positive
 stitch_lower_limit=2.8 # mm — if stitch width is below this, it's
+
+#-----------------------
+# outlier confirmation settings 
+#-----------------------
+
+CONFIRM_CONSECUTIVE = 3 # number of consecutive out-of-range measurements for treat that as a real value 
+CONFIRM_TOLERANCE_MM = 0.25 # mm — how close consecutive out
 
 #-------------------------
 ## applying offset
