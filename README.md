@@ -7,15 +7,21 @@ A computer vision-based fabric inspection system using deep learning for automat
 
 ## Overview
 
-This project implements an automated textile quality inspection system using YOLOv8 segmentation models. The system can detect, classify, and measure fabric defects in real-time, providing accurate quality control for textile manufacturing processes.
+This project implements an automated textile quality inspection system using YOLOv8 segmentation models. The system can detect, classify, and measure fabric defects in real-time, providing accurate quality control for textile manufacturing processes. It includes hardware integration for serial communication, MQTT connectivity, and automated measurement capabilities.
 
 ### Key Features
 
 - Real-time fabric defect detection using YOLOv8 segmentation
-- Calibration system for accurate dimensional measurements
+- Dual model support for defect and single-needle detection
+- Advanced calibration system for accurate dimensional measurements
 - Database integration for defect tracking and analysis
+- Serial communication interface for hardware control
+- MQTT connectivity for remote monitoring and heartbeat
+- Automated image capture and analysis
+- Comprehensive measurement and stitch analysis
 - Support for multiple defect types and classifications
 - Automated annotation saving for quality records
+- Logger system for monitoring and troubleshooting
 
 ## Table of Contents
 
@@ -69,20 +75,20 @@ This project implements an automated textile quality inspection system using YOL
 
 ## Usage
 
-### Running the Calibration Tool
-
-Before performing inspections, calibrate the system for accurate measurements:
-
-```bash
-python calibration.py
-```
-
 ### Running the Main Inspection System
 
 Start the fabric inspection application:
 
 ```bash
 python main.py
+```
+
+### Running the Calibration Tool
+
+Before performing inspections, calibrate the system for accurate measurements:
+
+```bash
+python calibration.py
 ```
 
 ### Database Management
@@ -93,29 +99,93 @@ Access database operations directly:
 python database.py
 ```
 
+### Measurement Analysis
+
+Perform measurement calculations and analysis:
+
+```bash
+python measurement.py
+```
+
+### Automated Execution
+
+Run automated inspection scripts:
+
+```bash
+bash auto_run.sh
+```
+
+### Utility Scripts
+
+Access various utility scripts in the `Utils/` folder:
+- `auto_capture.py`: Automated image capture
+- `check_model.py`: Model validation and testing
+- `check_stitch_distance.py`: Stitch distance analysis
+- `usb_camera.py`: USB camera interface
+- `mqtt_reset_test.py`: MQTT reset testing
+- `test_reset.py`: System reset testing
+
 ## Project Structure
 
 ```
-Main_code/
-├── .gitignore                # Git ignore rules
-├── README.md                 # Project documentation
-├── requirements.txt          # Python dependencies
-├── calibration.py           # Camera calibration module
-├── main.py                  # Main inspection application
-├── database.py              # Database operations
-├── yolov8n_seg_200.pt      # Pre-trained YOLO model Old
-├── best_Model.pt           #re trained  model for angled camera mount 
-├── __pycache__/             # Python cache (ignored)
-├── .env/                    # Virtual environment (ignored)
-└── saved_annotations/       # Annotation storage (ignored)
+THREAD/
+├── README.md                      # Project documentation
+├── requirements.txt               # Python dependencies
+├── config.py                      # Configuration settings
+├── main.py                        # Main inspection application
+├── calibration.py                 # Camera calibration module
+├── measurement.py                 # Measurement and analysis utilities
+├── database.py                    # Database operations
+├── hardware_utils.py              # Hardware interface utilities
+├── serial_reader.py               # Serial communication module
+├── mqtt_heartbeat.py              # MQTT heartbeat/connectivity module
+├── file_cleaner.py                # File management utilities
+├── best_Model.pt                  # YOLOv8 model for defect detection (angled camera)
+├── single_needle_model.pt         # YOLOv8 model for single needle detection
+├── camera_calibration.json        # Camera calibration data
+├── camera_extrinsics.json         # Camera extrinsics data
+├── ChArUco_Calibration_Linux      # ChArUco calibration application
+├── auto_run.sh                    # Automated run script
+├── auto_runner.sh                 # Alternative run script
+├── download_calibartion_app.sh    # Calibration app downloader
+├── .gitignore                     # Git ignore rules
+├── .env                           # Environment variables
+├── __pycache__/                   # Python cache (ignored)
+├── venv/                          # Virtual environment (ignored)
+├── logs/                          # Application logs
+├── saved_annotations/             # Saved annotations and results
+│   ├── 2026-04-27_01-01-13/
+│   ├── 2026-04-27_15-21-43/
+│   ├── 2026-04-28_06-00-33/
+│   ├── 2026-04-28_08-28-41/
+│   └── 2026-04-28_08-30-30/
+├── Utils/                         # Utility scripts and tools
+│   ├── auto_capture.py
+│   ├── check_model.py
+│   ├── check_stitch_distance.py
+│   ├── mqtt_reset_test.py
+│   ├── test_reset.py
+│   ├── usb_camera.py
+│   ├── single_needle_model.pt
+│   ├── calibration_app_link.txt
+│   └── single_needle_photos_np02.zip
+└── Testing/                       # Test scripts
+    └── test1.py
 ```
 
 ### Module Descriptions
 
-- **calibration.py**: Handles camera calibration for accurate spatial measurements
 - **main.py**: Core inspection logic and defect detection pipeline
+- **calibration.py**: Handles camera calibration for accurate spatial measurements
+- **measurement.py**: Measurement calculations and analysis utilities
 - **database.py**: Database connectivity and data storage operations
-- **best_Model.pt**: YOLOv8 nano segmentation model trained on textile defects
+- **config.py**: Configuration settings and parameters
+- **hardware_utils.py**: Hardware interface and utilities
+- **serial_reader.py**: Serial communication interface for hardware devices
+- **mqtt_heartbeat.py**: MQTT connectivity and heartbeat monitoring
+- **file_cleaner.py**: File management and cleanup utilities
+- **best_Model.pt**: YOLOv8 segmentation model trained for defect detection (angled camera mount)
+- **single_needle_model.pt**: YOLOv8 segmentation model for single needle detection
 
 ## Configuration
 
