@@ -6,6 +6,7 @@ import sys
 import time
 import cv2
 import threading
+import subprocess
 from datetime import datetime
 import random
 
@@ -53,6 +54,17 @@ def run_startup_calibration():
         print("  2. Lighting is adequate")
         print("  3. Board is on the measurement plane")
         return False
+
+
+def reload_camera():
+    """Reload webcam driver (uvcvideo)."""
+    print("🔄 Reloading webcam driver...")
+    try:
+        subprocess.run(["sudo", "modprobe", "-r", "uvcvideo"], check=True)
+        subprocess.run(["sudo", "modprobe", "uvcvideo"], check=True)
+        print("✅ Webcam driver reloaded")
+    except subprocess.CalledProcessError as e:
+        print(f"⚠️ Failed to reload webcam driver: {e}")
 
 
 def main():
@@ -199,6 +211,14 @@ def main():
     CAMERA_RECONNECT_ATTEMPTS = 0
     MAX_RECONNECT_ATTEMPTS = 10
 
+    # confirmation settings for sustained out-of-range acceptance
+    # CONFIRM_CONSECUTIVE = config.CONFIRM_CONSECUTIVE
+    # CONFIRM_TOLERANCE_MM = config.CONFIRM_TOLERANCE_MM
+
+    # Raw-history buffers (post-offset) used to detect sustained changes
+    raw_seam_history = deque(maxlen=10)
+    raw_width_history = deque(maxlen=10)
+
     # Buffer for last 5 valid measurements
     valid_seam_buffer = deque(maxlen=5)
     valid_width_buffer = deque(maxlen=5)
@@ -263,7 +283,7 @@ def main():
                 if CAMERA_RECONNECT_ATTEMPTS >= MAX_RECONNECT_ATTEMPTS:
                     print("❌ Camera disconnected. Reloading usb_storage and attempting reconnect...")
 
-                    reload_usb_storage()
+                    reload_camera()
 
                     measurement_app.cap.release()
                     time.sleep(2)
@@ -312,6 +332,11 @@ def main():
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
                 
 
+                # store offset-applied raw values for history checks
+                raw_seam_history.append(seam_length_mm)
+                raw_width_history.append(stitch_width_mm)
+                
+
                 if LOG_DEBUG:
                     raw_seam = measurements.get("edge_distance_mm")
                     raw_width = measurements.get("stitch_width_mm")
@@ -339,34 +364,51 @@ def main():
                     and stitch_lower_limit < stitch_width_mm < stitch_upper_limit
                 )
 
+                confirmed_override = False
+
+                # If seam is above soft upper limit, check for N consecutive similar samples -> accept
+                if not valid_seam and seam_length_mm is not None and seam_length_mm > Seam_upper_limit:
+                    recent = [v for v in list(raw_seam_history)[-CONFIRM_CONSECUTIVE:] if v is not None]
+                    if len(recent) >= CONFIRM_CONSECUTIVE and all(v > Seam_upper_limit - CONFIRM_TOLERANCE_MM for v in recent):
+                        valid_seam = True
+                        confirmed_override = True
+
+                # For small/too-low measurements: ignore (do not confirm below lower bound)
+                # If stitch width is above soft upper limit, check similarly
+                if not valid_stitch and stitch_width_mm is not None and stitch_width_mm > stitch_upper_limit:
+                    recent_w = [v for v in list(raw_width_history)[-CONFIRM_CONSECUTIVE:] if v is not None]
+                    if len(recent_w) >= CONFIRM_CONSECUTIVE and all(v > stitch_upper_limit - CONFIRM_TOLERANCE_MM for v in recent_w):
+                        valid_stitch = True
+                        confirmed_override = True
+
+
                 has_valid_measurement = valid_seam and valid_stitch                
-                # If valid, save to buffer
+                # If valid, save to buffer save to smoothing buffers (if a confirmed override happened, adapt faster)
                 if has_valid_measurement:
+                    if confirmed_override:
+                        valid_seam_buffer.clear()
+                        valid_width_buffer.clear()
                     valid_seam_buffer.append(seam_length_mm)
                     valid_width_buffer.append(stitch_width_mm)
                     if LOG_DEBUG:
                         print(f"📦 Buffered measurement: seam={seam_length_mm:.2f}mm, width={stitch_width_mm:.2f}mm "
-                              f"(buffer size: {len(valid_seam_buffer)}/5)")
-
+                            f"(buffer size: {len(valid_seam_buffer)}/5)")
                 else:
-                    # No valid measurement — use average of last 5 if available
+                    # fallback: use buffered average if available 
                     if len(valid_seam_buffer) > 0 and len(valid_width_buffer) > 0:
-                        # seam_length_mm = sum(valid_seam_buffer) / len(valid_seam_buffer)+random.uniform(-0.1,0.1) 
-                        # stitch_width_mm = sum(valid_width_buffer) / len(valid_width_buffer)+random.uniform(-0.08,0.08)
                         seam_length_mm = sum(valid_seam_buffer) / len(valid_seam_buffer)
                         stitch_width_mm = sum(valid_width_buffer) / len(valid_width_buffer)
                         has_valid_measurement = True
                         if LOG_DEBUG:
                             print(f"📊 Using buffered average: seam={seam_length_mm:.2f}mm, "
-                                  f"width={stitch_width_mm:.2f}mm (from {len(valid_seam_buffer)} samples)")
-
+                                f"width={stitch_width_mm:.2f}mm (from {len(valid_seam_buffer)} samples)")
                 if stitch_delta > 0 and has_valid_measurement:
                     # Calculate moved distance
                     moved_distance_mm = stitch_delta * stitch_width_mm
                     total_distance_mm += moved_distance_mm
 
                     # Insert to database
-                    if db:  # redundant inner check removed
+                    if db:  
                         success = db.insert_measurement(
                             total_distance=round(total_distance_mm, 1),
                             stitch_length=round(stitch_width_mm, 1),
