@@ -326,6 +326,7 @@ def main():
                 if seam_length_mm is not None:
                     cv2.putText(annotated, f"Adjusted seam: {(seam_length_mm := seam_length_mm + SEAM_LENGTH_OFFSET):.2f}mm", (20, 90), 
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                    
                                 
                 if stitch_width_mm is not None:
                     cv2.putText(annotated, f"Adjusted width: {(stitch_width_mm := stitch_width_mm + STITCH_WIDTH_OFFSET):.2f}mm", (20, 120), 
@@ -333,9 +334,10 @@ def main():
                 
 
                 # store offset-applied raw values for history checks
-                raw_seam_history.append(seam_length_mm)
-                raw_width_history.append(stitch_width_mm)
-                
+                if seam_length_mm is not None:
+                    raw_seam_history.append(seam_length_mm)
+                if stitch_width_mm is not None:
+                    raw_width_history.append(stitch_width_mm)
 
                 if LOG_DEBUG:
                     raw_seam = measurements.get("edge_distance_mm")
@@ -347,12 +349,6 @@ def main():
                         f"width={f'{raw_width:.2f}' if raw_width is not None else 'N/A'}mm"
                     )
 
-                    # print(
-                    #     f"⚙️ Adjusted measurements: "
-                    #     f"seam={f'{seam_length_mm:.2f}' if seam_length_mm is not None else 'N/A'}mm, "
-                    #     f"width={f'{stitch_width_mm:.2f}' if stitch_width_mm is not None else 'N/A'}mm"
-                    # )
-                 
                 # Determine if this is a valid measurement
                 valid_seam = (
                     seam_length_mm is not None
