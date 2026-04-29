@@ -215,6 +215,11 @@ def main():
     # CONFIRM_CONSECUTIVE = config.CONFIRM_CONSECUTIVE
     # CONFIRM_TOLERANCE_MM = config.CONFIRM_TOLERANCE_MM
 
+    # Initialize variables to prevent UnboundLocalError
+    stitch_delta = 0
+    moved_distance_mm = 0.0
+
+
     # Raw-history buffers (post-offset) used to detect sustained changes
     raw_seam_history = deque(maxlen=10)
     raw_width_history = deque(maxlen=10)
@@ -225,8 +230,10 @@ def main():
 
     def perform_reset():
         """Reset DB values, ESP32 count, and runtime smoothing state."""
-        nonlocal total_distance_mm, last_stitch_count
+        nonlocal total_distance_mm, last_stitch_count,stitch_delta, moved_distance_mm
 
+        stitch_delta = 0
+        moved_distance_mm = 0.0
         print("🔁 Processing reset command...")
 
         db_success = False
@@ -310,28 +317,24 @@ def main():
                 # Get stitch count from serial
                 current_stitch_count = serial_reader.get_stitch_count() if serial_reader else last_stitch_count
 
-                # Initialize variables to prevent UnboundLocalError
-                stitch_delta = 0
-                moved_distance_mm = 0.0
 
                 # Calculate movement based on stitch count change
-                stitch_delta = current_stitch_count - last_stitch_count
+                stitch_delta += current_stitch_count - last_stitch_count
                 last_stitch_count = current_stitch_count
 
                 # measurements is a dict with keys: edge_distance_mm, stitch_width_mm, stitch_count, timestamp
                 seam_length_mm = measurements.get('edge_distance_mm', None)  # top_distance
                 stitch_width_mm = measurements.get('stitch_width_mm', None)
 
-                # Apply offsets only when measurement is present
                 if seam_length_mm is not None:
-                    cv2.putText(annotated, f"Adjusted seam: {(seam_length_mm := seam_length_mm + SEAM_LENGTH_OFFSET):.2f}mm", (20, 90), 
+                    seam_length_mm += SEAM_LENGTH_OFFSET
+                    cv2.putText(annotated, f"Adjusted seam: {seam_length_mm:.2f}mm", (20, 90),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-                    
-                                
+
                 if stitch_width_mm is not None:
-                    cv2.putText(annotated, f"Adjusted width: {(stitch_width_mm := stitch_width_mm + STITCH_WIDTH_OFFSET):.2f}mm", (20, 120), 
+                    stitch_width_mm += STITCH_WIDTH_OFFSET
+                    cv2.putText(annotated, f"Adjusted width: {stitch_width_mm:.2f}mm", (20, 120),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-                
 
                 # store offset-applied raw values for history checks
                 if seam_length_mm is not None:
@@ -402,6 +405,7 @@ def main():
                     # Calculate moved distance
                     moved_distance_mm = stitch_delta * stitch_width_mm
                     total_distance_mm += moved_distance_mm
+    
 
                     # Insert to database
                     if db:  
@@ -417,12 +421,13 @@ def main():
                     seam_display = f"{seam_length_mm:.2f}" if seam_length_mm is not None else "N/A"
                     info_text = (f"Count: {current_stitch_count} | Count_delta: {stitch_delta} | Moved: {moved_distance_mm:.2f}mm | "
                                f"Total: {total_distance_mm:.2f}mm | Seam: {seam_display}mm")
-                    if stitch_width_mm:
+                    if stitch_width_mm is not None:
                         info_text += f" | Width: {stitch_width_mm:.2f}mm"
                     
                     cv2.putText(annotated, info_text, (10, annotated.shape[0] - 40), 
                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
                     
+                    stitch_delta = 0 # reset stitch delta after applying movement
                     print(f"📏 {info_text}")
                 else:
                     # No valid measurements
