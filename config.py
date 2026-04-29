@@ -60,18 +60,6 @@ MARKER_LENGTH = 0.008   # meters (adjust as needed)
 MIN_CHARUCO_CORNERS = 6 #as per the openCV documentation
 CAPTURE_DELAY = 5  # seconds before auto-capture in extrinsic calibration
 
-# # -------------------------
-# # Camera Settings
-# # -------------------------
-# # CAMERA_INDEX = 1
-
-# #Get the available camera matrix
-# CAMERA_INDEX=find_camera()
-# CALIB_W = 1280
-# CALIB_H = 960
-# CAMERA_AUTO_EXPOSURE = 3  # V4L2: 1 = manual, 3 = auto
-# CAMERA_EXPOSURE = 3.5 # Manual exposure: -10 (darkest) to -4 (brightest). Adjust for lighting conditions.
-
 # -------------------------
 # Camera Settings
 # -------------------------
@@ -181,7 +169,7 @@ stitch_lower_limit=2.5 # mm — if stitch width is below this, it's
 #-----------------------
 
 CONFIRM_CONSECUTIVE = 3 # number of consecutive out-of-range measurements for treat that as a real value 
-CONFIRM_TOLERANCE_MM = 0.25 # mm — how close consecutive out
+CONFIRM_TOLERANCE_MM = 0.55 # mm — how close consecutive out
 
 #-------------------------
 ## applying offset
