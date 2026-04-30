@@ -211,10 +211,6 @@ def main():
     CAMERA_RECONNECT_ATTEMPTS = 0
     MAX_RECONNECT_ATTEMPTS = 10
 
-    # confirmation settings for sustained out-of-range acceptance
-    # CONFIRM_CONSECUTIVE = config.CONFIRM_CONSECUTIVE
-    # CONFIRM_TOLERANCE_MM = config.CONFIRM_TOLERANCE_MM
-
     # Initialize variables to prevent UnboundLocalError
     stitch_delta = 0
     moved_distance_mm = 0.0
@@ -386,8 +382,9 @@ def main():
                 # If valid, save to buffer save to smoothing buffers (if a confirmed override happened, adapt faster)
                 if has_valid_measurement:
                     if confirmed_override:
-                        valid_seam_buffer.clear()
-                        valid_width_buffer.clear()
+                        pass
+                        # valid_seam_buffer.clear()
+                        # valid_width_buffer.clear()
                     valid_seam_buffer.append(seam_length_mm)
                     valid_width_buffer.append(stitch_width_mm)
                     if LOG_DEBUG:
