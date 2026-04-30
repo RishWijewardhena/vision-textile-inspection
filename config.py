@@ -96,7 +96,7 @@ TWO_ROW_THRESHOLD_PX = 30  # pixels — threshold for detecting "two distinct ro
 
 # Outlier filtering (MAD)
 OUTLIER_MIN_SAMPLES = _env_int("OUTLIER_MIN_SAMPLES", 4)
-OUTLIER_MAD_SCALE = _env_float("OUTLIER_MAD_SCALE", 2.5)
+OUTLIER_MAD_SCALE = _env_float("OUTLIER_MAD_SCALE", 1.4)
 
 # -------------------------
 # ROI Settings
