@@ -1,239 +1,329 @@
 # Vision Textile Inspection
 
-A computer vision-based fabric inspection system using deep learning for automated defect detection in textiles.
+A computer vision stitch measurement system for textile production lines. The
+application uses a YOLOv8 segmentation model, calibrated camera geometry, ESP32
+stitch counts, MySQL storage, and MQTT status/reset messages to measure seam
+allowance, stitch width, and total stitched distance.
 
 ![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 ## Overview
 
-This project implements an automated textile quality inspection system using YOLOv8 segmentation models. The system can detect, classify, and measure fabric defects in real-time, providing accurate quality control for textile manufacturing processes. It includes hardware integration for serial communication, MQTT connectivity, and automated measurement capabilities.
+`main.py` is the runtime orchestrator. It opens the camera, runs the measurement
+pipeline from `measurement.py`, reads stitch counts from the ESP32 through
+`serial_reader.py`, inserts measurements into the configured database, saves
+annotated frames, publishes MQTT heartbeat messages, and listens for MQTT reset
+commands.
 
-### Key Features
+The current measurement flow is:
 
-- Real-time fabric defect detection using YOLOv8 segmentation
-- Dual model support for defect and single-needle detection
-- Advanced calibration system for accurate dimensional measurements
-- Database integration for defect tracking and analysis
-- Serial communication interface for hardware control
-- MQTT connectivity for remote monitoring and heartbeat
-- Automated image capture and analysis
-- Comprehensive measurement and stitch analysis
-- Support for multiple defect types and classifications
-- Automated annotation saving for quality records
-- Logger system for monitoring and troubleshooting
+1. Detect stitch and fabric masks with `single_needle_model.pt`.
+2. Ignore detections outside the configured ROI when ROI filtering is enabled.
+3. Convert stitch/fabric pixel positions to world measurements using
+   `camera_calibration.json` and `camera_extrinsics.json`.
+4. Compute per-stitch seam allowance and stitch width.
+5. Apply MAD-based outlier filtering before averaging measurements.
+6. Smooth accepted values with short rolling buffers.
+7. Validate values against configured seam/stitch limits.
+8. Use `CONFIRM_CONSECUTIVE` to accept sustained high measurements that would
+   otherwise be treated as outliers.
+9. Combine the latest stitch count delta with stitch width to update total
+   distance and write a database row.
 
-## Table of Contents
+## Key Features
 
-- [Installation](#installation)
-- [Usage](#usage)
-- [Project Structure](#project-structure)
-- [Configuration](#configuration)
-- [Dependencies](#dependencies)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
+- YOLOv8 segmentation for stitch and fabric detection.
+- ChArUco camera calibration and extrinsic calibration support.
+- Pixel-to-world measurement using camera intrinsics/extrinsics.
+- ROI filtering for ignoring detections outside the measurement area.
+- MAD filter for robust per-frame outlier rejection.
+- `CONFIRM_CONSECUTIVE` confirmation for sustained high seam/stitch readings.
+- Rolling measurement buffers for smoother runtime output.
+- ESP32 serial integration for stitch counts and reset commands.
+- MySQL measurement logging.
+- MQTT heartbeat and reset command handling.
+- Annotated image saving under session-specific folders.
+- Automatic cleanup of old saved annotations.
+- Camera reconnect handling with webcam driver reload.
 
 ## Installation
 
 ### Prerequisites
 
 - Python 3.11 or higher
-- pip package manager
-- Git
+- pip
+- A Linux camera setup supported by OpenCV/V4L2
+- ESP32 or compatible serial stitch counter
+- MySQL database/table configured through `.env`
 
-### Setup Instructions
+### Setup
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/RishWijewardhena/vision-textile-inspection.git
-   cd vision-textile-inspection
-   ```
+```bash
+git clone https://github.com/RishWijewardhena/vision-textile-inspection.git
+cd vision-textile-inspection
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
-2. **Create a virtual environment**
-   
-   For Linux/macOS:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-   
-   For Windows:
-   ```bash
-   python -m venv venv
-   venv\Scripts\activate
-   ```
+Create a `.env` file with the required database settings:
 
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+DB_HOST=your-db-host
+DB_USER=your-db-user
+DB_PASSWORD=your-db-password
+DB_DATABASE=your-db-name
+DB_TABLE=your-machine-or-table-id
+```
 
-4. **Configure environment variables**
-   
-   Create a `.env` file in the root directory with your configuration settings (if needed).
+Optional environment overrides:
+
+```bash
+SERIAL_PORT=/dev/ttyACM0
+MQTT_SERVER=mqtt.anc.idea8.cloud
+MQTT_PORT=8883
+MQTT_USERNAME=backend
+MQTT_PASSWORD=your-password
+MQTT_TLS_INSECURE=true
+
+ROI_ENABLED=true
+ROI_X_MIN=100
+ROI_X_MAX=1270
+ROI_Y_MIN=300
+ROI_Y_MAX=760
+
+OUTLIER_MIN_SAMPLES=4
+OUTLIER_MAD_SCALE=1.4
+
+SEAM_LENGTH_OFFSET=-1.3
+STITCH_WIDTH_OFFSET=-1.0
+```
 
 ## Usage
 
-### Running the Main Inspection System
-
-Start the fabric inspection application:
+Run the main system:
 
 ```bash
 python main.py
 ```
 
-### Running the Calibration Tool
-
-Before performing inspections, calibrate the system for accurate measurements:
+Run calibration manually:
 
 ```bash
 python calibration.py
 ```
 
-### Database Management
-
-Access database operations directly:
+Run the MQTT reset test utility:
 
 ```bash
-python database.py
+python Utils/mqtt_reset_test.py
 ```
 
-### Measurement Analysis
-
-Perform measurement calculations and analysis:
-
-```bash
-python measurement.py
-```
-
-### Automated Execution
-
-Run automated inspection scripts:
+Run the automated startup/update script:
 
 ```bash
 bash auto_run.sh
 ```
 
-### Utility Scripts
+During runtime, press `q` in the OpenCV window to quit when `SHOW_WINDOWS` is
+enabled. If windows are disabled, stop the process with `Ctrl+C`.
 
-Access various utility scripts in the `Utils/` folder:
-- `auto_capture.py`: Automated image capture
-- `check_model.py`: Model validation and testing
-- `check_stitch_distance.py`: Stitch distance analysis
-- `usb_camera.py`: USB camera interface
-- `mqtt_reset_test.py`: MQTT reset testing
-- `test_reset.py`: System reset testing
+## Measurement Filtering
+
+### MAD Filter
+
+The measurement pipeline uses a Median Absolute Deviation filter in
+`measurement.filtered_mean()` to reject per-frame outliers before calculating
+the seam allowance and stitch width averages.
+
+The relevant configuration values are in `config.py`:
+
+```python
+OUTLIER_MIN_SAMPLES = _env_int("OUTLIER_MIN_SAMPLES", 4)
+OUTLIER_MAD_SCALE = _env_float("OUTLIER_MAD_SCALE", 1.4)
+```
+
+Behavior:
+
+- If fewer than `OUTLIER_MIN_SAMPLES` values are available, all values are kept.
+- If the MAD is near zero, all values are kept.
+- Otherwise, robust z-scores are calculated and values above
+  `OUTLIER_MAD_SCALE` are removed.
+- If filtering removes every value, the raw mean is used as a safe fallback.
+- Debug logs print inlier counts as `MAD filter -> seam inliers: x/y, stitch
+  inliers: x/y`.
+
+### Runtime Validation and `CONFIRM_CONSECUTIVE`
+
+After offsets and smoothing, `main.py` validates the live measurements against
+configured bounds:
+
+```python
+Seam_lower_limit = 3.5
+Seam_upper_limit = 7.5
+stitch_lower_limit = 2.5
+stitch_upper_limit = 4.5
+
+CONFIRM_CONSECUTIVE = 3
+CONFIRM_TOLERANCE_MM = 0.55
+```
+
+Normal valid ranges:
+
+- Seam allowance must be between `Seam_lower_limit` and `Seam_upper_limit`.
+- Stitch width must be between `stitch_lower_limit` and `stitch_upper_limit`.
+
+High readings are handled specially. If seam allowance or stitch width is above
+the upper limit, the system checks the most recent `CONFIRM_CONSECUTIVE` raw
+post-offset samples. If all of those samples remain above
+`upper_limit - CONFIRM_TOLERANCE_MM`, the value is accepted as a real sustained
+measurement instead of being treated as a false positive.
+
+Low readings below the lower limits are not confirmed this way; they are ignored
+and the system falls back to buffered averages when available.
+
+When a confirmed high value is accepted, the rolling valid-measurement buffers
+are cleared so the system adapts quickly to the new sustained value.
+
+## Reset Behavior
+
+The MQTT reset topic is based on `DB_TABLE`:
+
+```text
+machine/<DB_TABLE>/commands/reset
+```
+
+Publishing `reset` to that topic makes the main loop:
+
+- Insert a `(0, 0, 0)` reset row into the database.
+- Send `R` to the ESP32 over serial.
+- Reset runtime distance and stitch-delta state.
+- Reinitialize valid measurement buffers.
+- Publish `reset_success` on the same MQTT topic when database and serial reset
+  both succeed.
+
+Heartbeat messages are published to:
+
+```text
+machine/<DB_TABLE>/status/heartbeat
+```
 
 ## Project Structure
 
-```
+```text
 THREAD/
-├── README.md                      # Project documentation
-├── requirements.txt               # Python dependencies
-├── config.py                      # Configuration settings
-├── main.py                        # Main inspection application
-├── calibration.py                 # Camera calibration module
-├── measurement.py                 # Measurement and analysis utilities
-├── database.py                    # Database operations
-├── hardware_utils.py              # Hardware interface utilities
-├── serial_reader.py               # Serial communication module
-├── mqtt_heartbeat.py              # MQTT heartbeat/connectivity module
-├── file_cleaner.py                # File management utilities
-├── best_Model.pt                  # YOLOv8 model for defect detection (angled camera)
-├── single_needle_model.pt         # YOLOv8 model for single needle detection
-├── camera_calibration.json        # Camera calibration data
-├── camera_extrinsics.json         # Camera extrinsics data
-├── ChArUco_Calibration_Linux      # ChArUco calibration application
-├── auto_run.sh                    # Automated run script
-├── auto_runner.sh                 # Alternative run script
-├── download_calibartion_app.sh    # Calibration app downloader
-├── .gitignore                     # Git ignore rules
-├── .env                           # Environment variables
-├── __pycache__/                   # Python cache (ignored)
-├── venv/                          # Virtual environment (ignored)
-├── logs/                          # Application logs
-├── saved_annotations/             # Saved annotations and results
-│   ├── 2026-04-27_01-01-13/
-│   ├── 2026-04-27_15-21-43/
-│   ├── 2026-04-28_06-00-33/
-│   ├── 2026-04-28_08-28-41/
-│   └── 2026-04-28_08-30-30/
-├── Utils/                         # Utility scripts and tools
+├── README.md
+├── requirements.txt
+├── config.py
+├── main.py
+├── measurement.py
+├── calibration.py
+├── database.py
+├── serial_reader.py
+├── mqtt_heartbeat.py
+├── hardware_utils.py
+├── file_cleaner.py
+├── best_Model.pt
+├── single_needle_model.pt
+├── camera_calibration.json
+├── camera_extrinsics.json
+├── auto_run.sh
+├── auto_runner.sh
+├── download_calibartion_app.sh
+├── scripts/
+│   └── create_sudoers_thread_modprobe.sh
+├── Utils/
 │   ├── auto_capture.py
+│   ├── camera_UI.py
 │   ├── check_model.py
 │   ├── check_stitch_distance.py
+│   ├── data_capturing.py
+│   ├── data_capturing_2.py
 │   ├── mqtt_reset_test.py
-│   ├── test_reset.py
-│   ├── usb_camera.py
-│   ├── single_needle_model.pt
-│   ├── calibration_app_link.txt
-│   └── single_needle_photos_np02.zip
-└── Testing/                       # Test scripts
+│   └── usb_camera.py
+└── Testing/
     └── test1.py
 ```
 
-### Module Descriptions
+## Main Modules
 
-- **main.py**: Core inspection logic and defect detection pipeline
-- **calibration.py**: Handles camera calibration for accurate spatial measurements
-- **measurement.py**: Measurement calculations and analysis utilities
-- **database.py**: Database connectivity and data storage operations
-- **config.py**: Configuration settings and parameters
-- **hardware_utils.py**: Hardware interface and utilities
-- **serial_reader.py**: Serial communication interface for hardware devices
-- **mqtt_heartbeat.py**: MQTT connectivity and heartbeat monitoring
-- **file_cleaner.py**: File management and cleanup utilities
-- **best_Model.pt**: YOLOv8 segmentation model trained for defect detection (angled camera mount)
-- **single_needle_model.pt**: YOLOv8 segmentation model for single needle detection
+- `main.py`: Runtime orchestration, reset handling, database writes, image
+  saving, camera reconnects, and measurement validation.
+- `measurement.py`: YOLO inference, ROI filtering, mask processing,
+  pixel-to-world measurement, MAD filtering, and rolling smoothing.
+- `config.py`: Camera, model, measurement, ROI, serial, database, MQTT, offset,
+  and cleanup settings.
+- `serial_reader.py`: ESP32 serial reader and command sender.
+- `database.py`: MySQL connection and measurement insertion.
+- `mqtt_heartbeat.py`: MQTT heartbeat publisher and reset command listener.
+- `file_cleaner.py`: Deletes old saved annotation files.
+- `hardware_utils.py`: Camera and ESP32 discovery helpers.
+- `calibration.py`: ChArUco calibration helpers.
 
-## Configuration
+## Configuration Reference
 
-The system can be configured through environment variables or configuration files. Key parameters include:
+Important values in `config.py`:
 
-- Camera resolution and frame rate
-- Detection confidence threshold
-- Model input size
-- Database connection settings
-- Calibration parameters
+- `MODEL_PATH`: model used by the runtime, currently `single_needle_model.pt`.
+- `STITCH_CLASS_ID`, `FABRIC_CLASS_ID`: YOLO class IDs used by the measurement
+  code.
+- `CONF_THRESH`, `IOU_THRESH`, `MAX_DETECTIONS`: YOLO inference settings.
+- `FRAME_BUFFER`: rolling median buffer length for seam and width smoothing.
+- `MIN_STITCHES`: minimum inlier count required before accepting a measurement.
+- `MAX_PX_DISTANCE`: maximum image-space stitch-to-fabric-edge distance.
+- `SKIP_CLUSTER`, `TWO_ROW_THRESHOLD_PX`: row selection behavior for seam
+  allowance measurement.
+- `OUTLIER_MIN_SAMPLES`, `OUTLIER_MAD_SCALE`: MAD filter controls.
+- `ROI_ENABLED`, `ROI_X_MIN`, `ROI_X_MAX`, `ROI_Y_MIN`, `ROI_Y_MAX`: active
+  measurement area.
+- `Seam_lower_limit`, `Seam_upper_limit`: valid seam allowance range.
+- `stitch_lower_limit`, `stitch_upper_limit`: valid stitch width range.
+- `CONFIRM_CONSECUTIVE`, `CONFIRM_TOLERANCE_MM`: sustained high-value
+  confirmation controls.
+- `SEAM_LENGTH_OFFSET`, `STITCH_WIDTH_OFFSET`: post-measurement calibration
+  offsets.
+- `INFERENCE_INTERVAL`: seconds between processed inference frames.
+- `SAVE_DIR`: root folder for annotated frame output.
+- `FILE_RETENTION_HOURS`, `FILE_CLEANUP_INTERVAL_SECONDS`: saved file cleanup.
+- `SHOW_WINDOWS`: enables/disables OpenCV display windows.
 
 ## Dependencies
 
-### Core Libraries
+Core dependencies are listed in `requirements.txt`:
 
-- **Python**: 3.11+
-- **OpenCV**: Computer vision operations and image processing
-- **NumPy**: Numerical computations and array operations
-- **PyTorch**: Deep learning framework
-- **Ultralytics**: YOLOv8 implementation
+- OpenCV with contrib modules
+- Ultralytics YOLO
+- NumPy, SciPy, Pillow, Matplotlib
+- PyTorch, installed as required by Ultralytics
+- paho-mqtt
+- pyserial
+- mysql-connector-python
+- python-dotenv
+- psutil
+- PyYAML
+- requests
 
-### Complete Dependency List
+## Output Data
 
-See `requirements.txt` for the full list of dependencies with version specifications.
+Each valid stitch-count delta produces a database row with:
 
-## Model Information
+- `total_distance`: cumulative stitched distance in millimeters.
+- `stitch_length`: measured stitch width in millimeters.
+- `seam_allowance`: measured seam allowance in millimeters.
 
-The project uses a YOLOv8 medium segmentation model (`best_Model.pt`) trained specifically for textile defect detection. The model can identify and segment various types of fabric defects including:
+Annotated frames are saved under:
 
-- Holes and tears
-- Stains and discoloration
-- Thread irregularities
-- Pattern defects
-- Other manufacturing flaws
+```text
+saved_annotations/<YYYY-MM-DD_HH-MM-SS>/
+```
 
-## Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+Old saved files are removed by `FileCleanerThread` according to the retention
+settings in `config.py`.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.
 
 ## Contact
 
@@ -241,13 +331,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - GitHub: [@RishWijewardhena](https://github.com/RishWijewardhena)
 - Project Link: [https://github.com/RishWijewardhena/vision-textile-inspection](https://github.com/RishWijewardhena/vision-textile-inspection)
-
-## Acknowledgments
-
-- YOLOv8 by Ultralytics
-- OpenCV community
-- PyTorch team
-
----
-
-**Note**: This project is under active development. Features and documentation may be updated regularly.
