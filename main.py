@@ -25,53 +25,58 @@ from collections import deque
 from mqtt_heartbeat import MqttHeartbeat
 
 
+def ts():
+    """Return current timestamp in format: [HH:MM:SS]"""
+    return datetime.now().strftime("[%H:%M:%S]")
+
+
 def run_startup_calibration():
     """Run extrinsic calibration at startup  """
-    print("\n" + "="*60)
-    print("SYSTEM STARTUP - EXTRINSIC CALIBRATION")
-    print("="*60)
+    print(ts() + " " + "\n" + "="*60)
+    print(ts() + " SYSTEM STARTUP - EXTRINSIC CALIBRATION")
+    print(ts() + " " + "="*60)
     
     board, detector = create_charuco_board()
     success = run_extrinsic_calibration(board, detector)
 
     if success:
-        print("\n✅ CALIBRATION COMPLETE")
+        print(ts() + " ✅ CALIBRATION COMPLETE")
         cv2.destroyAllWindows()  # Ensure calibration window is closed
         cv2.waitKey(1)
         return True
 
     # Fallback: keep working with existing extrinsics if available
     elif not success and os.path.exists(EXTRINSICS_FILE):
-        print("\n⚠️ Calibration failed, using existing extrinsics file:", EXTRINSICS_FILE)
+        print(ts() + " ⚠️ Calibration failed, using existing extrinsics file:", EXTRINSICS_FILE)
         cv2.destroyAllWindows()  # Ensure calibration window is closed
         cv2.waitKey(1)
         return True
     
     else:
-        print("\n❌ CALIBRATION FAILED - Cannot continue without extrinsics")
-        print("Please ensure:")
-        print("  1. ChArUco board is visible to camera")
-        print("  2. Lighting is adequate")
-        print("  3. Board is on the measurement plane")
+        print(ts() + " ❌ CALIBRATION FAILED - Cannot continue without extrinsics")
+        print(ts() + " Please ensure:")
+        print(ts() + "   1. ChArUco board is visible to camera")
+        print(ts() + "   2. Lighting is adequate")
+        print(ts() + "   3. Board is on the measurement plane")
         return False
 
 
 def reload_camera():
     """Reload webcam driver (uvcvideo)."""
-    print("🔄 Reloading webcam driver...")
+    print(ts() + " 🔄 Reloading webcam driver...")
     try:
         subprocess.run(["sudo", "modprobe", "-r", "uvcvideo"], check=True)
         subprocess.run(["sudo", "modprobe", "uvcvideo"], check=True)
-        print("✅ Webcam driver reloaded")
+        print(ts() + " ✅ Webcam driver reloaded")
     except subprocess.CalledProcessError as e:
-        print(f"⚠️ Failed to reload webcam driver: {e}")
+        print(ts() + f" ⚠️ Failed to reload webcam driver: {e}")
 
 
 def main():
     """Main application loop"""
-    print("\n" + "="*60)
-    print("🧵 STITCH MEASUREMENT SYSTEM")
-    print("="*60)
+    print(ts() + " " + "\n" + "="*60)
+    print(ts() + " 🧵 STITCH MEASUREMENT SYSTEM")
+    print(ts() + " " + "="*60)
     
     # commenting out the extrinsics calibration for speed, but you can uncomment to run calibration at startup. Just make sure to have the ChArUco board in view and good lighting for it to work.
 
@@ -91,7 +96,7 @@ def main():
 
     
     # Step 2: Initialize all components
-    print("\n📡 Initializing components...")
+    print(ts() + " \n📡 Initializing components...")
     
     try:
         # Initialize measurement app
@@ -107,16 +112,16 @@ def main():
             stitch_id=STITCH_CLASS_ID,
             fabric_id=FABRIC_CLASS_ID
         )
-        print("✅ Measurement app initialized")
+        print(ts() + " ✅ Measurement app initialized")
         
     except Exception as e:
-        print(f"❌ Failed to initialize measurement app: {e}")
+        print(ts() + f" ❌ Failed to initialize measurement app: {e}")
         sys.exit(1)
     
     # Initialize database
     db = DatabaseHandler()
     if not db.connect():
-        print("❌ Database connection failed - continuing without DB")
+        print(ts() + " ❌ Database connection failed - continuing without DB")
         db = None
 
     # reset the total distance in the database to 0 at startup
@@ -129,7 +134,7 @@ def main():
                 stitch_length=0.0,
                 seam_allowance=0.0,
             )
-            print("🔄 New day detected - total distance reset to 0 in database")
+            print(ts() + " 🔄 New day detected - total distance reset to 0 in database")
 
         elif last_date is None:
             db.insert_measurement(
@@ -137,16 +142,16 @@ def main():
                 stitch_length=0.0,
                 seam_allowance=0.0,
             )
-            print("📊 No previous records - total distance initialized to 0 in database")
+            print(ts() + " 📊 No previous records - total distance initialized to 0 in database")
             
         else:
-            print(f"📊 Total distance continues from last measurement in database: {last_date}")
+            print(ts() + f" 📊 Total distance continues from last measurement in database: {last_date}")
 
     
     # Initialize serial reader
     serial_reader = SerialReader()
     if not serial_reader.start_reading():
-        print("⚠️ Serial connection failed - continuing without serial data")
+        print(ts() + " ⚠️ Serial connection failed - continuing without serial data")
         serial_reader = None
     
     #initialize file cleaner
@@ -175,20 +180,20 @@ def main():
             on_reset=queue_reset_request,
         )
         heartbeat.start()
-        print(
-            f"✅ MQTT heartbeat started: {MQTT_HEARTBEAT_TOPIC} "
+        print(ts() +
+            f" ✅ MQTT heartbeat started: {MQTT_HEARTBEAT_TOPIC} "
             f"(every {MQTT_HEARTBEAT_INTERVAL}s), reset listener: {MQTT_RESET_TOPIC}"
         )
     except Exception as e:
-        print(f"⚠️ MQTT heartbeat not started: {e} (continuing without heartbeat)")
+        print(ts() + f" ⚠️ MQTT heartbeat not started: {e} (continuing without heartbeat)")
 
 
 
-    print("\n" + "="*60)
-    print("🎯 SYSTEM READY - Starting measurements")
-    print("="*60)
-    print("Press 'q' to quit")
-    print("="*60 + "\n")
+    print(ts() + " " + "\n" + "="*60)
+    print(ts() + " 🎯 SYSTEM READY - Starting measurements")
+    print(ts() + " " + "="*60)
+    print(ts() + " Press 'q' to quit")
+    print(ts() + " " + "="*60 + "\n")
     
     # Step 3: Main measurement loop
     RESET_POST_DELAY_SEC = 2.0
@@ -199,14 +204,14 @@ def main():
     # step 3.1: Getting last total distance from DB to continue from previous session if available
     total_distance_mm = float(db.get_last_record_total_distance() if db else 0.0) 
     if LOG_DEBUG:
-        print(f"📊 Starting total distance: {total_distance_mm:.2f}mm")
+        print(ts() + f" 📊 Starting total distance: {total_distance_mm:.2f}mm")
     os.makedirs(SAVE_DIR, exist_ok=True)
 
     # Create session-specific folder for this run
     session_start = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     session_dir = os.path.join(SAVE_DIR, session_start)
     os.makedirs(session_dir, exist_ok=True)
-    print(f"📁 Session folder: {os.path.abspath(session_dir)}")
+    print(ts() + f" 📁 Session folder: {os.path.abspath(session_dir)}")
 
     CAMERA_RECONNECT_ATTEMPTS = 0
     MAX_RECONNECT_ATTEMPTS = 10
@@ -230,7 +235,7 @@ def main():
 
         stitch_delta = 0
         moved_distance_mm = 0.0
-        print("🔁 Processing reset command...")
+        print(ts() + " 🔁 Processing reset command...")
 
         db_success = False
         if db:
@@ -240,21 +245,21 @@ def main():
                 seam_allowance=0.0,
             )
             if db_success:
-                print("✅ DB reset row inserted (0,0,0)")
+                print(ts() + " ✅ DB reset row inserted (0,0,0)")
             else:
-                print("⚠️ DB reset row insert failed")
+                print(ts() + " ⚠️ DB reset row insert failed")
         else:
-            print("⚠️ DB unavailable for reset row insert")
+            print(ts() + " ⚠️ DB unavailable for reset row insert")
 
         serial_success = False
         if serial_reader:
             serial_success = serial_reader.send_command("R")
             if serial_success:
-                print("✅ Serial reset command sent: R")
+                print(ts() + " ✅ Serial reset command sent: R")
             else:
-                print("⚠️ Serial reset command failed")
+                print(ts() + " ⚠️ Serial reset command failed")
         else:
-            print("⚠️ Serial reader unavailable for reset command")
+            print(ts() + " ⚠️ Serial reader unavailable for reset command")
 
         # Give ESP32 time to apply reset before using stitch count baseline again.
         time.sleep(RESET_POST_DELAY_SEC)
@@ -265,11 +270,11 @@ def main():
         valid_width_buffer.clear()
         valid_seam_buffer.extend([6.5] * 5)
         valid_width_buffer.extend([3.9] * 5)
-        print("✅ Runtime counters and buffers reset")
+        print(ts() + " ✅ Runtime counters and buffers reset")
 
         if db_success and serial_success and heartbeat:
             heartbeat.publish_reset_success()
-            print(f"✅ MQTT reset acknowledgment published: {MQTT_RESET_TOPIC} -> reset_success")
+            print(ts() + f" ✅ MQTT reset acknowledgment published: {MQTT_RESET_TOPIC} -> reset_success")
 
     
     try:
@@ -281,10 +286,10 @@ def main():
             ret, frame = measurement_app.cap.read()
             if not ret:
                 CAMERA_RECONNECT_ATTEMPTS += 1
-                print(f"⚠️ No frame from camera (attempt {CAMERA_RECONNECT_ATTEMPTS}/{MAX_RECONNECT_ATTEMPTS})")
+                print(ts() + f" ⚠️ No frame from camera (attempt {CAMERA_RECONNECT_ATTEMPTS}/{MAX_RECONNECT_ATTEMPTS})")
 
                 if CAMERA_RECONNECT_ATTEMPTS >= MAX_RECONNECT_ATTEMPTS:
-                    print("❌ Camera disconnected. Reloading usb_storage and attempting reconnect...")
+                    print(ts() + " ❌ Camera disconnected. Reloading usb_storage and attempting reconnect...")
 
                     reload_camera()
 
@@ -292,12 +297,11 @@ def main():
                     time.sleep(2)
 
                     new_camera_index = find_camera()
-                    print(f"🔁 Re-detected camera: {new_camera_index}")
 
                     measurement_app.cap = cv2.VideoCapture(new_camera_index, cv2.CAP_V4L2)
                     force_camera_resolution(measurement_app.cap, CALIB_W, CALIB_H)
                     CAMERA_RECONNECT_ATTEMPTS = 0
-
+                    print(ts() + f" 🔁 Re-detected camera: {new_camera_index}")
                     time.sleep(0.1)
                     continue
 
@@ -343,7 +347,8 @@ def main():
                     raw_width = measurements.get("stitch_width_mm")
 
                     print(
-                        f"🔍 Raw measurements: "
+                        ts() + 
+                        f" 🔍 Raw measurements: "
                         f"seam={f'{raw_seam:.2f}' if raw_seam is not None else 'N/A'}mm, "
                         f"width={f'{raw_width:.2f}' if raw_width is not None else 'N/A'}mm"
                     )
@@ -367,7 +372,7 @@ def main():
                     if len(recent) >= CONFIRM_CONSECUTIVE and all(v > Seam_upper_limit - CONFIRM_TOLERANCE_MM for v in recent):
                         valid_seam = True
                         confirmed_override = True
-                        print(f"🚨Seam length above {Seam_upper_limit}mm but sustained for {CONFIRM_CONSECUTIVE} samples - accepting as valid")
+                        print(ts() + f" 🚨Seam length above {Seam_upper_limit}mm but sustained for {CONFIRM_CONSECUTIVE} samples - accepting as valid")
 
                 # For small/too-low measurements: ignore (do not confirm below lower bound)
                 # If stitch width is above soft upper limit, check similarly
@@ -376,7 +381,7 @@ def main():
                     if len(recent_w) >= CONFIRM_CONSECUTIVE and all(v > stitch_upper_limit - CONFIRM_TOLERANCE_MM for v in recent_w):
                         valid_stitch = True
                         confirmed_override = True
-                        print(f" 🚨Stitch width above {stitch_upper_limit}mm but sustained for {CONFIRM_CONSECUTIVE} samples - accepting as valid")
+                        print(ts() + f" 🚨Stitch width above {stitch_upper_limit}mm but sustained for {CONFIRM_CONSECUTIVE} samples - accepting as valid")
 
                 has_valid_measurement = valid_seam and valid_stitch                
                 # If valid, save to buffer save to smoothing buffers (if a confirmed override happened, adapt faster)
@@ -388,7 +393,7 @@ def main():
                     valid_seam_buffer.append(seam_length_mm)
                     valid_width_buffer.append(stitch_width_mm)
                     if LOG_DEBUG:
-                        print(f"📦 Buffered measurement: seam={seam_length_mm:.2f}mm, width={stitch_width_mm:.2f}mm "
+                        print(ts() + f" 📦 Buffered measurement: seam={seam_length_mm:.2f}mm, width={stitch_width_mm:.2f}mm "
                             f"(buffer size: {len(valid_seam_buffer)}/5)")
                 else:
                     # fallback: use buffered average if available 
@@ -397,7 +402,7 @@ def main():
                         stitch_width_mm = sum(valid_width_buffer) / len(valid_width_buffer)
                         has_valid_measurement = True
                         if LOG_DEBUG:
-                            print(f"📊 Using buffered average: seam={seam_length_mm:.2f}mm, "
+                            print(ts() + f" 📊 Using buffered average: seam={seam_length_mm:.2f}mm, "
                                 f"width={stitch_width_mm:.2f}mm (from {len(valid_seam_buffer)} samples)")
                 if stitch_delta > 0 and has_valid_measurement:
                     # Calculate moved distance
@@ -413,7 +418,7 @@ def main():
                             seam_allowance=round(seam_length_mm, 1)
                         )
                         if not success:
-                            print("⚠️ Database insert failed - will retry on next valid measurement")
+                            print(ts() + " ⚠️ Database insert failed - will retry on next valid measurement")
                     
                     # Update total distance
                     seam_display = f"{seam_length_mm:.2f}" if seam_length_mm is not None else "N/A"
@@ -426,7 +431,7 @@ def main():
                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
                     
                     stitch_delta = 0 # reset stitch delta after applying movement
-                    print(f"📏 {info_text}")
+                    print(ts() + f" 📏 {info_text}")
                 else:
                     # No valid measurements
                     cv2.putText(annotated, f"Stitch count: {current_stitch_count} (waiting for measurements)", 
@@ -449,15 +454,15 @@ def main():
             # Handle keyboard input
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
-                print("\n🛑 Shutdown requested by user")
+                print(ts() + " \n🛑 Shutdown requested by user")
                 break
     
     except KeyboardInterrupt:
-        print("\n🛑 Interrupted by user")
+        print(ts() + " \n🛑 Interrupted by user")
     
     finally:
         # Step 4: Cleanup
-        print("\n🧹 Cleaning up...")
+        print(ts() + " \n🧹 Cleaning up...")
         
         if serial_reader:
             serial_reader.stop()
@@ -474,9 +479,9 @@ def main():
             
         cv2.destroyAllWindows()
         
-        print(f"\n✅ Total frames processed: {frame_count}")
-        print(f"📁 Images saved to: {os.path.abspath(SAVE_DIR)}")
-        print("\n👋 System shutdown complete")
+        print(ts() + f" \n✅ Total frames processed: {frame_count}")
+        print(ts() + f" 📁 Images saved to: {os.path.abspath(SAVE_DIR)}")
+        print(ts() + " \n👋 System shutdown complete")
 
 
 if __name__ == "__main__":
