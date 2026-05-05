@@ -229,6 +229,8 @@ def main():
     valid_seam_buffer = deque(maxlen=5)
     valid_width_buffer = deque(maxlen=5)
 
+
+
     def perform_reset():
         """Reset DB values, ESP32 count, and runtime smoothing state."""
         nonlocal total_distance_mm, last_stitch_count,stitch_delta, moved_distance_mm
@@ -289,6 +291,17 @@ def main():
                 print(ts() + f" ⚠️ No frame from camera (attempt {CAMERA_RECONNECT_ATTEMPTS}/{MAX_RECONNECT_ATTEMPTS})")
 
                 if CAMERA_RECONNECT_ATTEMPTS >= MAX_RECONNECT_ATTEMPTS:
+                    if heartbeat:
+                        try:
+                            heartbeat.client.publish(
+                                MQTT_CAMERA_ISSUE_TOPIC,
+                                payload="issue",
+                                qos=0,
+                                retain=False,
+                            )
+                            print(ts() + f" 📡 MQTT camera issue sent: {MQTT_CAMERA_ISSUE_TOPIC} -> issue")
+                        except Exception as exc:
+                            print(ts() + f" ⚠️ MQTT camera issue publish failed: {exc}")
                     print(ts() + " ❌ Camera disconnected. Reloading usb_storage and attempting reconnect...")
 
                     reload_camera()

@@ -205,3 +205,4 @@ MQTT_HEARTBEAT_TOPIC = f"machine/{DEVICE_ID}/status/heartbeat"
 MQTT_RESET_TOPIC = f"machine/{DEVICE_ID}/commands/reset"
 MQTT_HEARTBEAT_INTERVAL = 2.0  # seconds
 MQTT_TLS_INSECURE = _env_bool("MQTT_TLS_INSECURE", True)
+MQTT_CAMERA_ISSUE_TOPIC = f"machine/{DEVICE_ID}/status/camera_issue"
