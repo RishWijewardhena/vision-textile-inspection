@@ -286,6 +286,7 @@ def main():
                 perform_reset()
 
             ret, frame = measurement_app.cap.read()
+            
             if not ret:
                 CAMERA_RECONNECT_ATTEMPTS += 1
                 print(ts() + f" ⚠️ No frame from camera (attempt {CAMERA_RECONNECT_ATTEMPTS}/{MAX_RECONNECT_ATTEMPTS})")
@@ -299,9 +300,9 @@ def main():
                                 qos=0,
                                 retain=False,
                             )
-                            print(ts() + f" 📡 MQTT camera issue sent: {MQTT_CAMERA_ISSUE_TOPIC} -> issue")
+                        print(ts() + f" 📡 MQTT camera issue sent: {MQTT_CAMERA_ISSUE_TOPIC} -> issue")
                     except Exception as exc:
-                            print(ts() + f" ⚠️ MQTT camera issue publish failed: {exc}")
+                        print(ts() + f" ⚠️ MQTT camera issue publish failed: {exc}")
 
 
                 if CAMERA_RECONNECT_ATTEMPTS >= MAX_RECONNECT_ATTEMPTS:
