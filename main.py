@@ -215,7 +215,7 @@ def main():
     os.makedirs(session_dir, exist_ok=True)
     print(ts() + f" 📁 Session folder: {os.path.abspath(session_dir)}")
 
-    CAMERA_RECONNECT_ATTEMPTS = 0
+    CAMERA_RECONNEC_ATTEMPTS = 0
     MAX_RECONNECT_ATTEMPTS = 10
 
     # Initialize variables to prevent UnboundLocalError
@@ -234,7 +234,6 @@ def main():
     # reset the total distance in the database to 0 at startup
     if serial_reader:
         serial_success = serial_reader.send_command("R")
-
 
 
     def perform_reset():
@@ -327,7 +326,8 @@ def main():
                     CAMERA_RECONNECT_ATTEMPTS = 0
                     print(ts() + f" 🔁 Re-detected camera: {new_camera_index}")
                     time.sleep(0.1)
-                    continue
+                    
+                continue
 
             CAMERA_RECONNECT_ATTEMPTS = 0  # Reset on successful frame
             current_time = time.time()
