@@ -124,7 +124,9 @@ def main():
         print(ts() + " ❌ Database connection failed - continuing without DB")
         db = None
 
-    # reset the total distance in the database to 0 at startup
+
+
+
     if db:
         last_date=db.get_last_record_date()
         today=datetime.now().date()
@@ -228,6 +230,10 @@ def main():
     # Buffer for last 5 valid measurements
     valid_seam_buffer = deque(maxlen=5)
     valid_width_buffer = deque(maxlen=5)
+
+    # reset the total distance in the database to 0 at startup
+    if serial_reader:
+        serial_success = serial_reader.send_command("R")
 
 
 
