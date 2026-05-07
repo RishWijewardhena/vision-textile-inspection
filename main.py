@@ -215,7 +215,7 @@ def main():
     os.makedirs(session_dir, exist_ok=True)
     print(ts() + f" 📁 Session folder: {os.path.abspath(session_dir)}")
 
-    CAMERA_RECONNEC_ATTEMPTS = 0
+    CAMERA_RECONNECT_ATTEMPTS = 0
     MAX_RECONNECT_ATTEMPTS = 10
 
     # Initialize variables to prevent UnboundLocalError
