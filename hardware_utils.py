@@ -11,7 +11,7 @@ def find_esp32():
             
 
 def find_camera():
-    cam_list=["/dev/video0","/dev/video1","/dev/video2"]
+    cam_list=["/dev/video0","/dev/video1","/dev/video2","/dev/video3","/dev/video4"]
     for cam in cam_list:
         cap = cv2.VideoCapture(cam)
         if cap.isOpened():
