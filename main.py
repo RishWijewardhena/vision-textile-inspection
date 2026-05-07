@@ -314,10 +314,9 @@ def main():
      
                     print(ts() + " ❌ Camera disconnected. Reloading usb_storage and attempting reconnect...")
 
-                    reload_camera()
-
                     measurement_app.cap.release()
                     time.sleep(2)
+                    reload_camera() #reload the webcam driver to attempt to recover from disconnect
 
                     new_camera_index = find_camera()
 
