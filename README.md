@@ -67,6 +67,17 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Before running the main app, install the sudoers rule that allows the camera
+reload helper to run `modprobe` without a password:
+
+```bash
+cd scripts
+sudo bash create_sudoers_thread_modprobe.sh
+```
+
+This creates the sudoers drop-in used by `main.py` when it reloads the webcam
+driver after a disconnect.
+
 Create a `.env` file with the required database settings:
 
 ```bash
