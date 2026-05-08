@@ -231,6 +231,22 @@ def main():
     valid_seam_buffer = deque(maxlen=5)
     valid_width_buffer = deque(maxlen=5)
 
+
+    #retrieve last 5 records from DB to pre-fill smoothing buffers and continue from previous session trends if available
+    if db:
+        last_records = db.get_last_n_records(5)
+        print(ts() + f" 📊 Retrieved last {len(last_records)} records from DB \n {last_records}")
+        for record in last_records:
+            if record['seam_allowance'] is not None and Seam_lower_limit < record['seam_allowance'] < Seam_upper_limit:
+                valid_seam_buffer.append(float(record['seam_allowance']))
+            if record['stitch_length'] is not None and stitch_lower_limit < record['stitch_length'] < stitch_upper_limit:
+                valid_width_buffer.append(float(record['stitch_length']))
+        print(ts() + f" 📊 Pre-filled smoothing buffers with last {len(valid_seam_buffer)} seam and {len(valid_width_buffer)} width measurements from DB")
+    
+
+    print(ts() + f" 📊 Initial valid seam buffer: {list(valid_seam_buffer)}")
+    print(ts() + f" 📊 Initial valid width buffer: {list(valid_width_buffer)}")
+
     # reset the total distance in the database to 0 at startup
     if serial_reader:
         serial_success = serial_reader.send_command("R")
