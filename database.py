@@ -78,6 +78,31 @@ class DatabaseHandler:
             print(f"⚠️ Could not fetch last record total distance: {e}")
             return None
     
+    def get_last_n_records(self, n=5):
+        """Get the last n records from the database"""
+        try:
+            query = f"""
+            SELECT `timestamp`, `stitch_length`, `seam_allowance`, `total_distance`
+            FROM `{self.config['table']}`
+            ORDER BY `timestamp` DESC
+            LIMIT {n}
+            """
+            self.cursor.execute(query)
+            results = self.cursor.fetchall()
+            return [
+                {
+                    'timestamp': row[0],
+                    'stitch_length': row[1],
+                    'seam_allowance': row[2],
+                    'total_distance': row[3]
+                }
+                for row in results
+            ]
+        except Exception as e:
+            print(f"⚠️ Could not fetch last {n} records: {e}")
+            return []
+
+    
     def insert_measurement(self, total_distance, stitch_length
                            , seam_allowance):
         """
