@@ -233,19 +233,23 @@ def main():
 
 
     #retrieve last 5 records from DB to pre-fill smoothing buffers and continue from previous session trends if available
-    if db:
-        last_records = db.get_last_n_records(5)
-        print(ts() + f" 📊 Retrieved last {len(last_records)} records from DB \n {last_records}")
-        for record in last_records:
-            if record['seam_allowance'] is not None and Seam_lower_limit < record['seam_allowance'] < Seam_upper_limit:
-                valid_seam_buffer.append(float(record['seam_allowance']))
-            if record['stitch_length'] is not None and stitch_lower_limit < record['stitch_length'] < stitch_upper_limit:
-                valid_width_buffer.append(float(record['stitch_length']))
-        print(ts() + f" 📊 Pre-filled smoothing buffers with last {len(valid_seam_buffer)} seam and {len(valid_width_buffer)} width measurements from DB")
-    
+    def initialize_buffers_from_db():
+        if db:
+            last_records = db.get_last_n_records(5)
+            print(ts() + f" 📊 Retrieved last {len(last_records)} records from DB \n {last_records}")
+            for record in last_records:
+                if record['seam_allowance'] is not None and Seam_lower_limit < record['seam_allowance'] < Seam_upper_limit:
+                    valid_seam_buffer.append(float(record['seam_allowance']))
+                if record['stitch_length'] is not None and stitch_lower_limit < record['stitch_length'] < stitch_upper_limit:
+                    valid_width_buffer.append(float(record['stitch_length']))
+            print(ts() + f" 📊 Pre-filled smoothing buffers with last {len(valid_seam_buffer)} seam and {len(valid_width_buffer)} width measurements from DB")
+        
 
-    print(ts() + f" 📊 Initial valid seam buffer: {list(valid_seam_buffer)}")
-    print(ts() + f" 📊 Initial valid width buffer: {list(valid_width_buffer)}")
+        print(ts() + f" 📊 Initial valid seam buffer: {list(valid_seam_buffer)}")
+        print(ts() + f" 📊 Initial valid width buffer: {list(valid_width_buffer)}")
+
+    #initialize smoothing buffers with recent DB values to allow smoother startup if historical data exists
+    initialize_buffers_from_db()
 
     # reset the total distance in the database to 0 at startup
     if serial_reader:
@@ -291,8 +295,7 @@ def main():
         last_stitch_count = serial_reader.get_stitch_count() if serial_reader else 0
         valid_seam_buffer.clear()
         valid_width_buffer.clear()
-        valid_seam_buffer.extend([6.5] * 5)
-        valid_width_buffer.extend([3.9] * 5)
+        initialize_buffers_from_db() # re-populate buffers from DB after reset to allow smoother recovery if historical data exists
         print(ts() + " ✅ Runtime counters and buffers reset")
 
         if db_success and serial_success and heartbeat:
@@ -385,12 +388,12 @@ def main():
                     raw_seam = measurements.get("edge_distance_mm")
                     raw_width = measurements.get("stitch_width_mm")
 
-                    print(
-                        ts() + 
-                        f" 🔍 Raw measurements: "
-                        f"seam={f'{raw_seam:.2f}' if raw_seam is not None else 'N/A'}mm, "
-                        f"width={f'{raw_width:.2f}' if raw_width is not None else 'N/A'}mm"
-                    )
+                    # print(
+                    #     ts() + 
+                    #     f" 🔍 Raw measurements: "
+                    #     f"seam={f'{raw_seam:.2f}' if raw_seam is not None else 'N/A'}mm, "
+                    #     f"width={f'{raw_width:.2f}' if raw_width is not None else 'N/A'}mm"
+                    # )
 
                 # Determine if this is a valid measurement
                 valid_seam = (
