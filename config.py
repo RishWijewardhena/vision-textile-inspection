@@ -168,7 +168,7 @@ stitch_lower_limit=2.5 # mm — if stitch width is below this, it's
 # outlier confirmation settings 
 #-----------------------
 
-CONFIRM_CONSECUTIVE = 3 # number of consecutive out-of-range measurements for treat that as a real value 
+CONFIRM_CONSECUTIVE = 10 # number of consecutive out-of-range measurements for treat that as a real value 
 CONFIRM_TOLERANCE_MM = 0.55 # mm — how close consecutive out
 
 #-------------------------
