@@ -180,6 +180,7 @@ def main():
             tls_insecure=MQTT_TLS_INSECURE,
             reset_topic=MQTT_RESET_TOPIC,
             on_reset=queue_reset_request,
+            esp32_issue_topic=MQTT_ESP32_ISSUE_TOPIC,
         )
         heartbeat.start()
         print(ts() +
@@ -309,6 +310,16 @@ def main():
                 reset_requested.clear()
                 perform_reset()
 
+            if serial_reader is None:
+                if heartbeat:
+                    try:
+                        heartbeat.publish_esp32_issue()
+                        print(ts() + f" ! MQTT ESP32 issue sent: {MQTT_ESP32_ISSUE_TOPIC} -> issue")
+                    except Exception as exc:
+                        print(ts() + f" ⚠️ MQTT ESP32 issue publish failed: {exc}")
+
+                sleep(2)  # Wait before checking serial connection again    
+            
             ret, frame = measurement_app.cap.read()
             
             if not ret:
