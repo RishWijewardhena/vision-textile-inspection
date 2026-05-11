@@ -16,6 +16,7 @@ class MqttHeartbeat(threading.Thread):
         tls_insecure=False,
         reset_topic=None,
         on_reset=None,
+        esp32_issue_topic=None,
     ):
         super().__init__(daemon=True)
         self.broker = broker
@@ -27,6 +28,7 @@ class MqttHeartbeat(threading.Thread):
         self.tls_insecure = tls_insecure
         self.reset_topic = reset_topic
         self.on_reset = on_reset
+        self.esp32_issue_topic = esp32_issue_topic
 
         self._stop_event = threading.Event()
 
@@ -69,6 +71,11 @@ class MqttHeartbeat(threading.Thread):
         if not self.reset_topic:
             return
         self.client.publish(self.reset_topic, payload="reset_success", qos=0, retain=False)
+    
+    def publish_esp32_issue(self):
+        if not self.esp32_issue_topic:
+            return
+        self.client.publish(self.esp32_issue_topic, payload="issue", qos=0, retain=False)
 
     def run(self):
         self.client.connect(self.broker, self.port, keepalive=30)
