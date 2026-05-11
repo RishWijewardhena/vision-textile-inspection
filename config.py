@@ -182,7 +182,7 @@ STITCH_WIDTH_OFFSET=-1.0 if os.getenv("STITCH_WIDTH_OFFSET") is None else float(
 # file cleaner 
 # ------------------------
 # Delete after 24 hours, check every hour
-FILE_RETENTION_HOURS = 24
+FILE_RETENTION_HOURS = 24*4
 FILE_CLEANUP_INTERVAL_SECONDS = 3600
 
 
