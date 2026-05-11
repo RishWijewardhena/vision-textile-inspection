@@ -455,7 +455,7 @@ def main():
                         stitch_width_mm = sum(valid_width_buffer) / len(valid_width_buffer)
                         has_valid_measurement = True
                         if LOG_DEBUG:
-                            print(ts() + f" 📊 Using buffered average: seam={seam_length_mm:.2f}mm, "
+                            print(ts() + f"  Using buffered average: seam={seam_length_mm:.2f}mm, "
                                 f"width={stitch_width_mm:.2f}mm (from {len(valid_seam_buffer)} samples)")
                 if stitch_delta > 0 and has_valid_measurement:
                     # Calculate moved distance
