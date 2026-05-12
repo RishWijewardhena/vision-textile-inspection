@@ -194,6 +194,10 @@ class SerialReader:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
+    
+    def is_connected(self):
+        """Check if serial connection is active"""
+        return self.serial_conn is not None and self.serial_conn.is_open
 
 
 # Test function
