@@ -373,7 +373,7 @@ def main():
 
                 if last_stitch_count > current_stitch_count:
                     last_stitch_count = current_stitch_count
-                    print(ts() + " 🔄 Stitch count reset detected - updating baseline to current count:", last_stitch_count)
+                    print(ts() + " 🔄  Stitch count reset detected - updating baseline to current count:", last_stitch_count)
 
 
                 # Calculate movement based on stitch count change
