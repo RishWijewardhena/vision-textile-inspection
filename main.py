@@ -309,9 +309,8 @@ def main():
             if reset_requested.is_set():
                 reset_requested.clear()
                 perform_reset()
-
-            # Check if serial reader failed to initialize OR disconnected during runtime
-            if serial_reader is None or not serial_reader.is_connected():
+            
+  
                 # Handle disconnection
                 if heartbeat:
                     try:
@@ -372,6 +371,10 @@ def main():
                 # Get stitch count from serial
                 current_stitch_count = serial_reader.get_stitch_count() if serial_reader else last_stitch_count
 
+                if last_stitch_count > current_stitch_count:
+                    last_stitch_count = current_stitch_count
+                    print(ts() + " 🔄 Stitch count reset detected - updating baseline to current count:", last_stitch_count)
+
 
                 # Calculate movement based on stitch count change
                 stitch_delta += current_stitch_count - last_stitch_count
@@ -428,7 +431,13 @@ def main():
                         valid_seam = True
                         confirmed_override = True
                         print(ts() + f" 🚨Seam length above {Seam_upper_limit}mm but sustained for {CONFIRM_CONSECUTIVE} samples - accepting as valid")
-
+                if not valid_seam and seam_length_mm is not None and seam_length_mm < Seam_lower_limit:
+                    recent = [v for v in list(raw_seam_history)[-CONFIRM_CONSECUTIVE:] if v is not None]
+                    if len(recent) >= CONFIRM_CONSECUTIVE and all(v < Seam_lower_limit + CONFIRM_TOLERANCE_MM for v in recent):
+                        valid_seam = True
+                        confirmed_override = True
+                        print(ts() + f" 🚨Seam length below {Seam_lower_limit}mm but sustained for {CONFIRM_CONSECUTIVE} samples - accepting as valid"
+                        )
                 # For small/too-low measurements: ignore (do not confirm below lower bound)
                 # If stitch width is above soft upper limit, check similarly
                 if not valid_stitch and stitch_width_mm is not None and stitch_width_mm > stitch_upper_limit:
@@ -437,6 +446,13 @@ def main():
                         valid_stitch = True
                         confirmed_override = True
                         print(ts() + f" 🚨Stitch width above {stitch_upper_limit}mm but sustained for {CONFIRM_CONSECUTIVE} samples - accepting as valid")
+                if not valid_stitch and stitch_width_mm is not None and stitch_width_mm < stitch_lower_limit:
+                    recent_w = [v for v in list(raw_width_history)[-CONFIRM_CONSECUTIVE:] if v is not None]
+                    if len(recent_w) >= CONFIRM_CONSECUTIVE and all(v < stitch_lower_limit + CONFIRM_TOLERANCE_MM for v in recent_w):
+                        valid_stitch = True
+                        confirmed_override = True
+                        print(ts() + f" 🚨Stitch width below {stitch_lower_limit}mm but sustained for {CONFIRM_CONSECUTIVE} samples - accepting as valid")
+
 
                 has_valid_measurement = valid_seam and valid_stitch                
                 # If valid, save to buffer save to smoothing buffers (if a confirmed override happened, adapt faster)
