@@ -310,16 +310,18 @@ def main():
                 reset_requested.clear()
                 perform_reset()
 
-            if serial_reader is None:
+            # Check if serial reader failed to initialize OR disconnected during runtime
+            if serial_reader is None or not serial_reader.is_connected():
+                # Handle disconnection
                 if heartbeat:
                     try:
                         heartbeat.publish_esp32_issue()
                         print(ts() + f" ! MQTT ESP32 issue sent: {MQTT_ESP32_ISSUE_TOPIC} -> issue")
                     except Exception as exc:
                         print(ts() + f" ⚠️ MQTT ESP32 issue publish failed: {exc}")
-
-                sleep(2)  # Wait before checking serial connection again    
+                time.sleep(2)
             
+            # get frame from camera
             ret, frame = measurement_app.cap.read()
             
             if not ret:
