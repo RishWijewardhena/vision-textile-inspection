@@ -222,7 +222,11 @@ def main():
     # Initialize variables to prevent UnboundLocalError
     stitch_delta = 0
     moved_distance_mm = 0.0
-
+    
+    # ESP32 connection tracking
+    esp32_issue_published = False  # Track if we've already published ESP32 issue
+    last_esp32_issue_publish_time = 0  # Track last publish time
+    ESP32_ISSUE_PUBLISH_INTERVAL = 2.0  # Publish every 2 seconds while disconnected
 
     # Raw-history buffers (post-offset) used to detect sustained changes
     raw_seam_history = deque(maxlen=20)
@@ -259,10 +263,12 @@ def main():
 
     def perform_reset():
         """Reset DB values, ESP32 count, and runtime smoothing state."""
-        nonlocal total_distance_mm, last_stitch_count,stitch_delta, moved_distance_mm
+        nonlocal total_distance_mm, last_stitch_count, stitch_delta, moved_distance_mm, esp32_issue_published, last_esp32_issue_publish_time
 
         stitch_delta = 0
         moved_distance_mm = 0.0
+        esp32_issue_published = False  # Reset the ESP32 issue flag
+        last_esp32_issue_publish_time = 0  # Reset publish time
         print(ts() + " 🔁 Processing reset command...")
 
         db_success = False
@@ -310,15 +316,30 @@ def main():
                 reset_requested.clear()
                 perform_reset()
             
-  
-                # Handle disconnection
-                if heartbeat:
-                    try:
-                        heartbeat.publish_esp32_issue()
-                        print(ts() + f" ! MQTT ESP32 issue sent: {MQTT_ESP32_ISSUE_TOPIC} -> issue")
-                    except Exception as exc:
-                        print(ts() + f" ⚠️ MQTT ESP32 issue publish failed: {exc}")
-                time.sleep(2)
+            # ===== CHECK ESP32 CONNECTION =====
+            if serial_reader:
+                current_loop_time = time.time()
+                if serial_reader.is_connected():
+                    # ESP32 is connected - clear the issue flag
+                    esp32_issue_published = False
+                    last_esp32_issue_publish_time = 0
+                else:
+                    # ESP32 is NOT connected - publish issue repeatedly every N seconds
+                    if current_loop_time - last_esp32_issue_publish_time >= ESP32_ISSUE_PUBLISH_INTERVAL:
+                        print(ts() + " ⚠️ ESP32 disconnected or not responding")
+                        if heartbeat:
+                            try:
+                                heartbeat.client.publish(
+                                    MQTT_ESP32_ISSUE_TOPIC,
+                                    payload="issue",
+                                    qos=0,
+                                    retain=False,
+                                )
+                                print(ts() + f" 📡 MQTT ESP32 issue sent: {MQTT_ESP32_ISSUE_TOPIC} -> issue")
+                                last_esp32_issue_publish_time = current_loop_time
+                                esp32_issue_published = True
+                            except Exception as exc:
+                                print(ts() + f" ⚠️ MQTT ESP32 issue publish failed: {exc}")
             
             # get frame from camera
             ret, frame = measurement_app.cap.read()
@@ -340,22 +361,54 @@ def main():
                     except Exception as exc:
                         print(ts() + f" ⚠️ MQTT camera issue publish failed: {exc}")
 
-
                 if CAMERA_RECONNECT_ATTEMPTS >= MAX_RECONNECT_ATTEMPTS:
-     
                     print(ts() + " ❌ Camera disconnected. Reloading usb_storage and attempting reconnect...")
 
                     measurement_app.cap.release()
                     time.sleep(2)
-                    reload_camera() #reload the webcam driver to attempt to recover from disconnect
+                    reload_camera()  # reload the webcam driver
+                    time.sleep(2)    # wait for driver to stabilize
 
                     new_camera_index = find_camera()
-
-                    measurement_app.cap = cv2.VideoCapture(new_camera_index, cv2.CAP_V4L2)
-                    force_camera_resolution(measurement_app.cap, CALIB_W, CALIB_H)
+                    
+                    # Verify VideoCapture opened successfully
+                    new_cap = cv2.VideoCapture(new_camera_index, cv2.CAP_V4L2)
+                    if not new_cap.isOpened():
+                        print(ts() + f" ⚠️ Failed to open camera at {new_camera_index}")
+                        time.sleep(1)
+                        continue  # Skip this iteration and retry
+                    
+                    measurement_app.cap = new_cap
+                    
+                    # Validate resolution settings
+                    aw, ah = force_camera_resolution(measurement_app.cap, CALIB_W, CALIB_H)
+                    if aw == 0 or ah == 0:
+                        print(ts() + f" ❌ Camera resolution failed (got {aw}x{ah}). Retrying...")
+                        time.sleep(1)
+                        continue  # Skip and retry
+                    
+                    if aw != CALIB_W or ah != CALIB_H:
+                        print(ts() + f" ⚠️ Resolution mismatch: got {aw}x{ah}, expected {CALIB_W}x{CALIB_H}")
+                    
+                    # Test camera produces frames
+                    test_success = False
+                    for test_attempt in range(3):
+                        time.sleep(0.5)
+                        test_ret, test_frame = measurement_app.cap.read()
+                        if test_ret and test_frame is not None:
+                            test_success = True
+                            print(ts() + f" ✅ Camera test frame successful")
+                            break
+                        else:
+                            print(ts() + f" ⚠️ Camera test frame failed (attempt {test_attempt+1}/3)")
+                    
+                    if not test_success:
+                        print(ts() + f" ❌ Camera not producing frames after reconnect")
+                        time.sleep(1)
+                        continue  # Skip and retry
+                    
                     CAMERA_RECONNECT_ATTEMPTS = 0
-                    print(ts() + f" 🔁 Re-detected camera: {new_camera_index}")
-                    time.sleep(0.1)
+                    print(ts() + f" ✅ Camera successfully reconnected: {new_camera_index}")
                     
                 continue
 
