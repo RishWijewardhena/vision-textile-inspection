@@ -75,7 +75,9 @@ CALIB_H = 960
 # -------------------------
 # YOLO Model Config
 # -------------------------
-MODEL_PATH = "single_needle_model.pt"
+MODEL_PATH = "single_needle_S.pt"
+#MODEL_PATH = "single_needle_AnC.pt"
+
 # MODEL_PATH = "single_needle_model.pt"
 STITCH_CLASS_ID = 0   # model class id for stitch
 FABRIC_CLASS_ID = 1   # model class id for fabric
