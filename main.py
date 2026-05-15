@@ -367,7 +367,7 @@ def main():
                     measurement_app.cap.release()
                     time.sleep(2)
                     reload_camera()  # reload the webcam driver
-                    time.sleep(2)    # wait for driver to stabilize
+                    time.sleep(5)    # wait for driver to stabilize
 
                     new_camera_index = find_camera()
                     
