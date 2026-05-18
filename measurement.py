@@ -182,6 +182,10 @@ class StitchMeasurementApp:
 
         self.model = YOLO(model_path)
         self.cap = cv2.VideoCapture(camera_index, cv2.CAP_V4L2) # for linux
+        
+        # Force MJPG compression FIRST (before resolution settings for proper negotiation)
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        
         self.aw, self.ah = force_camera_resolution(self.cap, calib_w, calib_h)
 
         self.frame_buf_dist = deque(maxlen=frame_buffer)
