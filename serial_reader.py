@@ -132,7 +132,7 @@ class SerialReader:
                     with self.lock:
                         self.latest_stitch_count = stitch_count
                     if LOG_DEBUG:
-                        print(f"📥 Serial received stitch count: {stitch_count}")
+                        print(f" Serial received stitch count: {stitch_count}")
                 else:
                     time.sleep(0.01)  # Small delay to prevent busy-waiting
             except Exception as e:
