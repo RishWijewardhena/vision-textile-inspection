@@ -120,34 +120,31 @@ def main():
     
     # Initialize database
     db = DatabaseHandler()
-    if not db.connect():
-        print(ts() + " ❌ Database connection failed - continuing without DB")
-        db = None
+    db_connected = db.connect()
+    if not db_connected:
+        print(ts() + " ⚠️ Database connection failed at startup - will retry on next measurement")
+    
+    # Note: db object is kept even if connection fails, so reconnection can be attempted
+    last_date=db.get_last_record_date()
+    today=datetime.now().date()
+    if last_date and last_date!=today:
+        db.insert_measurement(
+            total_distance=0.0,
+            stitch_length=0.0,
+            seam_allowance=0.0,
+        )
+        print(ts() + " 🔄 New day detected - total distance reset to 0 in database")
 
-
-
-
-    if db:
-        last_date=db.get_last_record_date()
-        today=datetime.now().date()
-        if last_date and last_date!=today:
-            db.insert_measurement(
-                total_distance=0.0,
-                stitch_length=0.0,
-                seam_allowance=0.0,
-            )
-            print(ts() + " 🔄 New day detected - total distance reset to 0 in database")
-
-        elif last_date is None:
-            db.insert_measurement(
-                total_distance=0.0,
-                stitch_length=0.0,
-                seam_allowance=0.0,
-            )
-            print(ts() + " 📊 No previous records - total distance initialized to 0 in database")
-            
-        else:
-            print(ts() + f" 📊 Total distance continues from last measurement in database: {last_date}")
+    elif last_date is None:
+        db.insert_measurement(
+            total_distance=0.0,
+            stitch_length=0.0,
+            seam_allowance=0.0,
+        )
+        print(ts() + " 📊 No previous records - total distance initialized to 0 in database")
+        
+    else:
+        print(ts() + f" 📊 Total distance continues from last measurement in database: {last_date}")
 
     
     # Initialize serial reader
@@ -169,7 +166,7 @@ def main():
         reset_requested.set()
 
     try:
-        # Use MQTT constants from config.py if you added them,
+        # Use MQTT constants 
         heartbeat = MqttHeartbeat(
             broker=MQTT_SERVER,
             port=MQTT_PORT,
@@ -271,19 +268,15 @@ def main():
         last_esp32_issue_publish_time = 0  # Reset publish time
         print(ts() + " 🔁 Processing reset command...")
 
-        db_success = False
-        if db:
-            db_success = db.insert_measurement(
-                total_distance=0.0,
-                stitch_length=0.0,
-                seam_allowance=0.0,
-            )
-            if db_success:
-                print(ts() + " ✅ DB reset row inserted (0,0,0)")
-            else:
-                print(ts() + " ⚠️ DB reset row insert failed")
+        db_success = db.insert_measurement(
+            total_distance=0.0,
+            stitch_length=0.0,
+            seam_allowance=0.0,
+        )
+        if db_success:
+            print(ts() + " ✅ Reset DB insert succeeded")
         else:
-            print(ts() + " ⚠️ DB unavailable for reset row insert")
+            print(ts() + " ⚠️ Reset DB insert failed (will retry on next measurement)")
 
         serial_success = False
         if serial_reader:
@@ -539,14 +532,13 @@ def main():
     
 
                     # Insert to database
-                    if db:  
-                        success = db.insert_measurement(
-                            total_distance=round(total_distance_mm, 1),
-                            stitch_length=round(stitch_width_mm, 1),
-                            seam_allowance=round(seam_length_mm, 1)
-                        )
-                        if not success:
-                            print(ts() + " ⚠️ Database insert failed - will retry on next valid measurement")
+                    success = db.insert_measurement(
+                        total_distance=round(total_distance_mm, 1),
+                        stitch_length=round(stitch_width_mm, 1),
+                        seam_allowance=round(seam_length_mm, 1)
+                    )
+                    if not success:
+                        print(ts() + " ⚠️ Database insert failed - will retry on next valid measurement")
                     
                     # Update total distance
                     seam_display = f"{seam_length_mm:.2f}" if seam_length_mm is not None else "N/A"
