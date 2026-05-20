@@ -80,11 +80,17 @@ class MqttHeartbeat(threading.Thread):
     def run(self):
         self.client.connect(self.broker, self.port, keepalive=30)
         self.client.loop_start()
+        time.sleep(0.5)
 
         try:
             while not self._stop_event.is_set():
                 self.client.publish(self.topic, payload="on", qos=0, retain=False)
                 time.sleep(self.interval_sec)
+                print(f"# MQTT heartbeat sent at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        except Exception as exc:
+            print(f"### MQTT heartbeat error: {exc} at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
         finally:
             self.client.loop_stop()
             self.client.disconnect()
