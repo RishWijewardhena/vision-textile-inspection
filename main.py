@@ -240,9 +240,9 @@ def main():
             last_records = db.get_last_n_records(5)
             print(ts() + f" 📊 Retrieved last {len(last_records)} records from DB \n {last_records}")
             for record in last_records:
-                if record['seam_allowance'] is not None and Seam_lower_limit < record['seam_allowance'] < Seam_upper_limit:
+                if record['seam_allowance'] is not None :
                     valid_seam_buffer.append(float(record['seam_allowance']))
-                if record['stitch_length'] is not None and stitch_lower_limit < record['stitch_length'] < stitch_upper_limit:
+                if record['stitch_length'] is not None :
                     valid_width_buffer.append(float(record['stitch_length']))
             print(ts() + f" 📊 Pre-filled smoothing buffers with last {len(valid_seam_buffer)} seam and {len(valid_width_buffer)} width measurements from DB")
         
