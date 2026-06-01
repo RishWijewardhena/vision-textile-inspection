@@ -24,11 +24,95 @@ from collections import deque
 
 # MQTT heartbeat thread (create this file: mqtt_heartbeat.py)
 from mqtt_heartbeat import MqttHeartbeat
+from needle_angle_measure import NeedleAngleDetector
 
 
 def ts():
     """Return current timestamp in format: [HH:MM:SS]"""
     return datetime.now().strftime("[%H:%M:%S]")
+
+
+class NeedleAngleWorker(threading.Thread):
+    def __init__(self, model_path, interval_sec, rotated_angle_threshold):
+        super().__init__(daemon=True)
+        self.model_path = model_path
+        self.interval_sec = interval_sec
+        self.rotated_angle_threshold = rotated_angle_threshold
+        self._stop_event = threading.Event()
+        self._frame_ready = threading.Event()
+        self._lock = threading.Lock()
+        self._pending_frame = None
+        self._busy = False
+        self._last_submitted_at = 0.0
+        self._latest_result = {
+            "rotated": False,
+            "detections": [],
+            "h_angle": None,
+            "v_angle": None,
+        }
+
+    def maybe_submit(self, frame, now):
+        with self._lock:
+            if self._busy or now - self._last_submitted_at < self.interval_sec:
+                return False
+            self._pending_frame = frame.copy()
+            self._busy = True
+            self._last_submitted_at = now
+            self._frame_ready.set()
+            return True
+
+    def latest_result(self):
+        with self._lock:
+            return dict(self._latest_result)
+
+    def run(self):
+        detector = None
+        while not self._stop_event.is_set():
+            if not self._frame_ready.wait(timeout=0.5):
+                continue
+
+            with self._lock:
+                frame = self._pending_frame
+                self._pending_frame = None
+                self._frame_ready.clear()
+
+            if frame is None:
+                with self._lock:
+                    self._busy = False
+                continue
+
+            try:
+                if detector is None:
+                    detector = NeedleAngleDetector(
+                        model_path=self.model_path,
+                        rotated_angle_threshold=self.rotated_angle_threshold,
+                    )
+
+                result = detector.measure_frame(frame, annotate=False)
+                result["checked_at"] = time.time()
+                h_angle = result.get("h_angle")
+                h_text = f"{h_angle:.1f}" if h_angle is not None else "N/A"
+                rotated = result.get("rotated", False)
+                print(ts() + f" 🧭 Needle angle checked: H={h_text}°, rotated={rotated}")
+
+            except Exception as exc:
+                result = {
+                    "rotated": False,
+                    "detections": [],
+                    "h_angle": None,
+                    "v_angle": None,
+                    "error": str(exc),
+                    "checked_at": time.time(),
+                }
+                print(ts() + f" ⚠️ Needle angle inference failed: {exc}")
+
+            with self._lock:
+                self._latest_result = result
+                self._busy = False
+
+    def stop(self):
+        self._stop_event.set()
+        self._frame_ready.set()
 
 
 def run_startup_calibration():
@@ -190,6 +274,22 @@ def main():
         )
     except Exception as e:
         print(ts() + f" ⚠️ MQTT heartbeat not started: {e} (continuing without heartbeat)")
+
+    angle_worker = None
+    try:
+        angle_worker = NeedleAngleWorker(
+            model_path=NEEDLE_ANGLE_MODEL_PATH,
+            interval_sec=NEEDLE_ANGLE_CHECK_INTERVAL,
+            rotated_angle_threshold=NEEDLE_ROTATED_ANGLE_THRESHOLD,
+        )
+        angle_worker.start()
+        print(
+            ts()
+            + f" ✅ Needle angle worker started: {NEEDLE_ANGLE_MODEL_PATH} "
+            + f"(every {NEEDLE_ANGLE_CHECK_INTERVAL}s, threshold {NEEDLE_ROTATED_ANGLE_THRESHOLD}°)"
+        )
+    except Exception as e:
+        print(ts() + f" ⚠️ Needle angle worker not started: {e}")
 
 
 
@@ -437,6 +537,23 @@ def main():
             if current_time - last_inference_time >= INFERENCE_INTERVAL:
                 # Get measurements from vision system
                 annotated, measurements = measurement_app.process_frame(frame)
+
+                if angle_worker and angle_worker.maybe_submit(frame, current_time):
+                    print(ts() + " 🧭 Needle angle inference queued")
+
+                if angle_worker and heartbeat:
+                    angle_result = angle_worker.latest_result()
+                    if angle_result.get("rotated"):
+                        try:
+                            heartbeat.client.publish(
+                                MQTT_CAMERA_ISSUE_TOPIC,
+                                payload="rotated",
+                                qos=0,
+                                retain=False,
+                            )
+                            print(ts() + f" 📡 MQTT camera issue sent: {MQTT_CAMERA_ISSUE_TOPIC} -> rotated")
+                        except Exception as exc:
+                            print(ts() + f" ⚠️ MQTT camera rotated publish failed: {exc}")
                 
                 # Get stitch count from serial
                 current_stitch_count = serial_reader.get_stitch_count() if serial_reader else last_stitch_count
@@ -628,6 +745,10 @@ def main():
         file_cleaner.stop() #stop file cleaner thread
         
         measurement_app.cap.release()
+
+        if angle_worker:
+            angle_worker.stop()
+            angle_worker.join(timeout=5)
 
         if heartbeat:
             heartbeat.stop()
