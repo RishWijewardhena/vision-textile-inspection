@@ -75,7 +75,7 @@ CALIB_H = 960
 # -------------------------
 # YOLO Model Config
 # -------------------------
-MODEL_PATH = "single_needle_S.pt"
+MODEL_PATH = "models/single_needle_S.pt"
 #MODEL_PATH = "single_needle_AnC.pt"
 
 # MODEL_PATH = "single_needle_model.pt"
@@ -155,6 +155,13 @@ if missing:
 INFERENCE_INTERVAL = 2  # seconds between inferences
 SAVE_DIR = "saved_annotations"
 LOG_DEBUG = True          # set True to print debug info
+
+# -------------------------
+# Needle angle monitoring
+# -------------------------
+NEEDLE_ANGLE_MODEL_PATH = "models/Needle_Model.pt"
+NEEDLE_ANGLE_CHECK_INTERVAL = 30 * 60  # seconds between angle inferences
+NEEDLE_ROTATED_ANGLE_THRESHOLD = 75.0  # degrees from horizontal
 
 
 #-------------------------
