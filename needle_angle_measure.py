@@ -1,18 +1,29 @@
 import os
 import math
+import threading
+import time
+from datetime import datetime
 import cv2
 import numpy as np
 from ultralytics import YOLO
 from pathlib import Path
+from config import (
+    NEEDLE_ANGLE_MODEL_PATH,
+    NEEDLE_ANGLE_CONF_THRESH,
+    NEEDLE_ANGLE_IOU_THRESH,
+    NEEDLE_NOT_ROTATED_ANGLE_MIN,
+    NEEDLE_NOT_ROTATED_ANGLE_MAX,
+)
 
 # ─── CONFIG ───────────────────────────────────────────────
-MODEL_PATH  = "models/Needle_Model.pt"
+MODEL_PATH  = NEEDLE_ANGLE_MODEL_PATH
 IMAGES_DIR  = "test_images"
 OUTPUT_DIR  = "results_angles"
-CONF_THRESH = 0.25
-IOU_THRESH  = 0.45
+CONF_THRESH = NEEDLE_ANGLE_CONF_THRESH
+IOU_THRESH  = NEEDLE_ANGLE_IOU_THRESH
 IMGSZ       = 640
-DEFAULT_ROTATED_ANGLE_THRESHOLD = 75.0
+DEFAULT_NOT_ROTATED_ANGLE_MIN = NEEDLE_NOT_ROTATED_ANGLE_MIN
+DEFAULT_NOT_ROTATED_ANGLE_MAX = NEEDLE_NOT_ROTATED_ANGLE_MAX
 
 # Colors (BGR)
 COLOR_BOX       = (0, 255, 0)     # Green  — bounding box
@@ -30,7 +41,8 @@ def calculate_needle_angles(angle_rad):
     angle_deg = ((angle_deg + 90) % 180) - 90
     horiz_angle = abs(angle_deg)
     vert_angle = 90.0 - horiz_angle
-    return angle_deg, horiz_angle, vert_angle
+    orientation_angle = math.degrees(angle_rad) % 180.0
+    return angle_deg, horiz_angle, vert_angle, orientation_angle
 
 
 def draw_angle_annotation(img, center, angle_rad, ref_len):
@@ -44,7 +56,7 @@ def draw_angle_annotation(img, center, angle_rad, ref_len):
     """
     cx, cy = center
 
-    angle_deg, horiz_angle, vert_angle = calculate_needle_angles(angle_rad)
+    angle_deg, horiz_angle, vert_angle, _ = calculate_needle_angles(angle_rad)
 
     # ── Reference rays ────────────────────────────────────
     ray = int(ref_len * 0.7)
@@ -102,13 +114,15 @@ class NeedleAngleDetector:
     def __init__(
         self,
         model_path=MODEL_PATH,
-        rotated_angle_threshold=DEFAULT_ROTATED_ANGLE_THRESHOLD,
+        not_rotated_angle_min=DEFAULT_NOT_ROTATED_ANGLE_MIN,
+        not_rotated_angle_max=DEFAULT_NOT_ROTATED_ANGLE_MAX,
         conf_thresh=CONF_THRESH,
         iou_thresh=IOU_THRESH,
         imgsz=IMGSZ,
     ):
         self.model = YOLO(str(model_path))
-        self.rotated_angle_threshold = float(rotated_angle_threshold)
+        self.not_rotated_angle_min = float(not_rotated_angle_min)
+        self.not_rotated_angle_max = float(not_rotated_angle_max)
         self.conf_thresh = conf_thresh
         self.iou_thresh = iou_thresh
         self.imgsz = imgsz
@@ -120,6 +134,7 @@ class NeedleAngleDetector:
                 "detections": [],
                 "h_angle": None,
                 "v_angle": None,
+                "orientation_angle": None,
                 "error": "No frame provided",
             }
 
@@ -140,6 +155,7 @@ class NeedleAngleDetector:
                 "detections": [],
                 "h_angle": None,
                 "v_angle": None,
+                "orientation_angle": None,
             }
             if annotate:
                 response["annotated"] = draw_img
@@ -158,7 +174,8 @@ class NeedleAngleDetector:
                 float(xywhr[3]),
                 float(xywhr[4]),
             )
-            angle_deg, h_ang, v_ang = calculate_needle_angles(angle_rad)
+            angle_deg, h_ang, v_ang, orientation_ang = calculate_needle_angles(angle_rad)
+            rotated = not (self.not_rotated_angle_min <= orientation_ang <= self.not_rotated_angle_max)
             detection = {
                 "class_id": cls_id,
                 "class_name": cls_name,
@@ -166,7 +183,8 @@ class NeedleAngleDetector:
                 "angle_deg": angle_deg,
                 "h_angle": h_ang,
                 "v_angle": v_ang,
-                "rotated": h_ang >= self.rotated_angle_threshold,
+                "orientation_angle": orientation_ang,
+                "rotated": rotated,
             }
             detections.append(detection)
 
@@ -185,10 +203,121 @@ class NeedleAngleDetector:
             "h_angle": primary["h_angle"],
             "v_angle": primary["v_angle"],
             "confidence": primary["confidence"],
+            "orientation_angle": primary["orientation_angle"],
         }
         if annotate:
             response["annotated"] = draw_img
         return response
+
+
+def _ts():
+    return datetime.now().strftime("[%H:%M:%S]")
+
+
+class NeedleAngleWorker(threading.Thread):
+    def __init__(self, model_path, interval_sec, not_rotated_angle_min, not_rotated_angle_max, annotation_dir=None):
+        super().__init__(daemon=True)
+        self.model_path = model_path
+        self.interval_sec = interval_sec
+        self.not_rotated_angle_min = not_rotated_angle_min
+        self.not_rotated_angle_max = not_rotated_angle_max
+        self.annotation_dir = annotation_dir
+        self._stop_event = threading.Event()
+        self._frame_ready = threading.Event()
+        self._lock = threading.Lock()
+        self._pending_frame = None
+        self._busy = False
+        self._last_submitted_at = 0.0
+        self._latest_result = {
+            "rotated": False,
+            "detections": [],
+            "h_angle": None,
+            "v_angle": None,
+        }
+
+    def maybe_submit(self, frame, now):
+        with self._lock:
+            if self._busy or now - self._last_submitted_at < self.interval_sec:
+                return False
+            self._pending_frame = frame.copy()
+            self._busy = True
+            self._last_submitted_at = now
+            self._frame_ready.set()
+            return True
+
+    def latest_result(self):
+        with self._lock:
+            return dict(self._latest_result)
+
+    def set_annotation_dir(self, annotation_dir):
+        os.makedirs(annotation_dir, exist_ok=True)
+        with self._lock:
+            self.annotation_dir = annotation_dir
+
+    def run(self):
+        detector = None
+        while not self._stop_event.is_set():
+            if not self._frame_ready.wait(timeout=0.5):
+                continue
+
+            with self._lock:
+                frame = self._pending_frame
+                self._pending_frame = None
+                self._frame_ready.clear()
+
+            if frame is None:
+                with self._lock:
+                    self._busy = False
+                continue
+
+            try:
+                if detector is None:
+                    detector = NeedleAngleDetector(
+                        model_path=self.model_path,
+                        not_rotated_angle_min=self.not_rotated_angle_min,
+                        not_rotated_angle_max=self.not_rotated_angle_max,
+                    )
+
+                with self._lock:
+                    annotation_dir = self.annotation_dir
+
+                result = detector.measure_frame(frame, annotate=bool(annotation_dir))
+                annotated = result.pop("annotated", None)
+                result["checked_at"] = time.time()
+
+                if annotation_dir and annotated is not None:
+                    filename = "needle_angle_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".jpg"
+                    save_path = os.path.join(annotation_dir, filename)
+                    if cv2.imwrite(save_path, annotated):
+                        result["annotation_path"] = save_path
+                        print(_ts() + f" 🖼️ Needle angle annotation saved: {save_path}")
+                    else:
+                        print(_ts() + f" ⚠️ Needle angle annotation save failed: {save_path}")
+
+                orientation_angle = result.get("orientation_angle")
+                angle_text = f"{orientation_angle:.1f}" if orientation_angle is not None else "N/A"
+                rotated = result.get("rotated", False)
+                print(_ts() + f" 🧭 Needle angle checked: angle={angle_text}°, rotated={rotated}")
+
+            except Exception as exc:
+                result = {
+                    "rotated": False,
+                    "detections": [],
+                    "h_angle": None,
+                    "v_angle": None,
+                    "orientation_angle": None,
+                    "error": str(exc),
+                    "checked_at": time.time(),
+                }
+                print(_ts() + f" ⚠️ Needle angle inference failed: {exc}")
+
+            with self._lock:
+                self._latest_result = result
+                self._busy = False
+
+    def stop(self):
+        self._stop_event.set()
+        self._frame_ready.set()
 
 
 def process_image(img_path: Path, model: YOLO, output_dir: Path):
