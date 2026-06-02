@@ -159,10 +159,13 @@ LOG_DEBUG = True          # set True to print debug info
 # -------------------------
 # Needle angle monitoring
 # -------------------------
-NEEDLE_ANGLE_MODEL_PATH = "models/Needle_Model.pt"
+NEEDLE_ANGLE_MODEL_PATH = "models/needle_detecting_model.pt"
 NEEDLE_ANGLE_CHECK_INTERVAL = 30 * 60  # seconds between angle inferences
-NEEDLE_ROTATED_ANGLE_THRESHOLD = 75.0  # degrees from horizontal
-
+NEEDLE_ANGLE_CONF_THRESH = 0.4
+NEEDLE_ANGLE_IOU_THRESH = 0.20
+NEEDLE_NOT_ROTATED_ANGLE_MIN = 75.0
+NEEDLE_NOT_ROTATED_ANGLE_MAX = 105.0
+NEEDLE_ANNOTATION_SAVE_DIR = "needle_annotations"
 
 #-------------------------
 # measurement validation thresholds (tuned based on observed data)
@@ -218,3 +221,4 @@ MQTT_ESP32_ISSUE_TOPIC = f"machine/{DEVICE_ID}/status/esp32_issue"
 MQTT_HEARTBEAT_INTERVAL = 2.0  # seconds
 MQTT_TLS_INSECURE = _env_bool("MQTT_TLS_INSECURE", True)
 MQTT_CAMERA_ISSUE_TOPIC = f"machine/{DEVICE_ID}/status/camera_issue"
+
