@@ -30,7 +30,6 @@ INPUT_BORDER = "#2D364A"
 
 # ── Changeable environment configuration ──────────────────────────────────
 ENV_FILE_NAME = ".env"
-ENV_RELATIVE_PARENT = True  # True => use ../.env relative to this script
 
 SEAM_LENGTH_ENV_KEY = "SEAM_LENGTH_OFFSET"
 STITCH_WIDTH_ENV_KEY = "STITCH_WIDTH_OFFSET"
@@ -41,14 +40,15 @@ STITCH_WIDTH_LABEL = "Stitch length adjustment"
 DEFAULT_OFFSET_VALUE = "0.0"
 
 
-def script_base_dir() -> Path:
-    return Path(__file__).resolve().parent
-
-
 def env_file_path() -> Path:
-    if ENV_RELATIVE_PARENT:
-        return script_base_dir().parent / ENV_FILE_NAME
-    return script_base_dir() / ENV_FILE_NAME
+    """
+    Search for:
+        ~/Desktop/THREAD/.env
+
+    regardless of username.
+    """
+    home = Path.home()
+    return home / "Desktop" / "THREAD" / ENV_FILE_NAME
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -293,6 +293,7 @@ class App(tk.Tk):
         self.geometry(f"{W}x{H}+{x}+{y}")
 
         self.env_path = env_file_path()
+        print("ENV FILE:", self.env_path)
         self.env_values = ensure_offset_keys_exist(self.env_path)
 
         self._build_ui()
@@ -496,8 +497,8 @@ class App(tk.Tk):
         try:
             self.env_path.parent.mkdir(parents=True, exist_ok=True)
             write_env_file(self.env_path, updates)
-            self._log(f"✓ Saved offsets to {self.env_path}")
-            messagebox.showinfo("Saved", "Offset values saved successfully. Restart the system for changes to take effect.")
+            self._log(f"✓ Saved offsets")
+            messagebox.showinfo("Saved", "Offset values saved successfully.\n\nRestart the system for changes to take effect.")
         except Exception as e:
             messagebox.showerror("Save failed", f"Could not save .env file: {e}")
 
@@ -506,7 +507,7 @@ class App(tk.Tk):
     def _set_buttons_busy(self, busy: bool):
         self._run_btn.set_enabled(not busy)
         self._stop_btn.set_enabled(not busy)
-        self._save_btn.configure(state="disabled" if busy else "normal")
+        self._save_btn.set_enabled(not busy)
 
     def _start_service(self):
         self._set_buttons_busy(True)
