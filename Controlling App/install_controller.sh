@@ -12,6 +12,12 @@ SCRIPT_NAME="system_controller.py"
 DESKTOP_NAME="system-control.desktop"
 SUDOERS_FILE="/etc/sudoers.d/thread-control"
 CURRENT_USER="$(whoami)"
+SYSTEMCTL_PATH="$(command -v systemctl)"
+
+if [ -z "$SYSTEMCTL_PATH" ]; then
+    echo "ERROR: systemctl not found."
+    exit 1
+fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -23,6 +29,7 @@ echo ""
 echo "[1/5] Checking python3-tk..."
 if ! python3 -c "import tkinter" &>/dev/null; then
     echo "      Installing python3-tk..."
+    sudo apt-get update
     sudo apt-get install -y python3-tk
 else
     echo "      python3-tk is already installed. ✓"
@@ -37,10 +44,9 @@ echo "      Done. ✓"
 
 # 3. Set up passwordless sudo for Thread.service only
 echo "[3/5] Configuring sudoers for Thread.service..."
-SUDOERS_LINE="$CURRENT_USER ALL=(ALL) NOPASSWD: /bin/systemctl start Thread.service, /bin/systemctl stop Thread.service"
+SUDOERS_LINE="$CURRENT_USER ALL=(ALL) NOPASSWD: $SYSTEMCTL_PATH start Thread.service, $SYSTEMCTL_PATH stop Thread.service"
 
-# Write to a temp file and validate with visudo before installing
-TMPFILE=$(mktemp)
+TMPFILE="$(mktemp)"
 echo "$SUDOERS_LINE" > "$TMPFILE"
 
 if sudo visudo -c -f "$TMPFILE" &>/dev/null; then
@@ -67,14 +73,14 @@ Terminal=false
 Categories=Utility;System;
 X-GNOME-Autostart-enabled=true
 X-GNOME-Autostart-Delay=15
-StartupNotify=false					
+StartupNotify=false
 EOF
 
 echo "      Autostart entry created at $AUTOSTART_DIR/$DESKTOP_NAME ✓"
 
 # 5. Launch the app immediately
 echo "[5/5] Launching app..."
-nohup python3 "$APP_DIR/$SCRIPT_NAME" &>/dev/null &
+nohup /usr/bin/python3 "$APP_DIR/$SCRIPT_NAME" &>/dev/null &
 echo "      App launched (PID $!) ✓"
 
 echo ""
