@@ -17,6 +17,7 @@ from serial_reader import SerialReader
 from database import DatabaseHandler
 from measurement import StitchMeasurementApp ,force_camera_resolution
 from file_cleaner import FileCleanerThread
+from log_cleaner import clean_old_logs
 from hardware_utils import find_camera
 from backup_data import BackupDataBuffer
 
@@ -162,6 +163,9 @@ def main():
     #initialize file cleaner
     file_cleaner=FileCleanerThread()
     file_cleaner.start()
+
+    # Run one-time log cleanup at startup to free old disk space.
+    clean_old_logs()
 
     # Initialize MQTT heartbeat
     heartbeat = None
