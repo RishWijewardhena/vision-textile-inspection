@@ -22,6 +22,7 @@ def load_json(path):
 def force_camera_resolution(cap, w, h):
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))  # Force MJPG compression
     time.sleep(2)
 
     aw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
