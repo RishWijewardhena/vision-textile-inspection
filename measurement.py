@@ -464,8 +464,9 @@ class StitchMeasurementApp:
                 final_indices.append(i)
 
         if LOG_DEBUG:
-            print("selected_indices:", selected_indices)
+            # print("selected_indices:", selected_indices)
             print("final_indices:", final_indices)
+            print("all widths:", all_widths)
 
         if len(final_indices) == 0:
             final_indices = selected_indices
@@ -565,6 +566,7 @@ class StitchMeasurementApp:
         return annotated, {
             'edge_distance_mm': smooth_dist,
             'stitch_width_mm': smooth_width,
+            # 'all_stitch_widths_mm': all_widths,
             'stitch_count': dist_inliers,
             'timestamp': datetime.now()
         }

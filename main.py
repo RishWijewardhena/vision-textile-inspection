@@ -33,7 +33,6 @@ def ts():
     return datetime.now().strftime("[%H:%M:%S]")
 
 
-
 def run_startup_calibration():
     """Run extrinsic calibration at startup  """
     print(ts() + " " + "\n" + "="*60)
