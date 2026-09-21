@@ -62,7 +62,7 @@ class FileCleanerThread:
                             os.remove(file_path)
                             deleted_files += 1
                             deleted_bytes += file_size
-                            print(f"Deleted old file: {file_path}")
+                            # print(f"Deleted old file: {file_path}")
                         except OSError as exc:
                             print(f"Failed deleting {file_path}: {exc}")
 
