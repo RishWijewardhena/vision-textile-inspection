@@ -448,7 +448,7 @@ def main():
                                 qos=0,
                                 retain=False,
                             )
-                        print(ts() + f" 📡 MQTT camera issue sent: {MQTT_CAMERA_ISSUE_TOPIC} -> issue")
+                        print(ts() + f"  MQTT camera issue sent: {MQTT_CAMERA_ISSUE_TOPIC} -> issue")
                     except Exception as exc:
                         print(ts() + f" ⚠️ MQTT camera issue publish failed: {exc}")
 
