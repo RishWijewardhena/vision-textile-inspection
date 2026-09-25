@@ -17,6 +17,7 @@ class MqttHeartbeat(threading.Thread):
         reset_topic=None,
         on_reset=None,
         esp32_issue_topic=None,
+        camera_calibration_issue_topic=None,
     ):
         super().__init__(daemon=True)
         self.broker = broker
@@ -29,6 +30,7 @@ class MqttHeartbeat(threading.Thread):
         self.reset_topic = reset_topic
         self.on_reset = on_reset
         self.esp32_issue_topic = esp32_issue_topic
+        self.camera_calibration_issue_topic = camera_calibration_issue_topic
 
         self._stop_event = threading.Event()
 
@@ -76,6 +78,20 @@ class MqttHeartbeat(threading.Thread):
         if not self.esp32_issue_topic:
             return
         self.client.publish(self.esp32_issue_topic, payload="issue", qos=0, retain=False)
+
+    def publish_camera_calibration_issue(self, state):
+        """Publish "invalid" (recalibration needed) or "valid" (cleared).
+
+        Retained so dashboards that connect later still see the current state.
+        Returns True if the message was handed to the client successfully.
+        """
+        if not self.camera_calibration_issue_topic:
+            return False
+        if state not in ("invalid", "valid"):
+            print(f"❌ Invalid camera calibration state: {state}")
+            return False
+        info = self.client.publish(self.camera_calibration_issue_topic, payload=state, qos=0, retain=True)
+        return info.rc == mqtt.MQTT_ERR_SUCCESS
 
     def run(self):
         self.client.connect(self.broker, self.port, keepalive=30)

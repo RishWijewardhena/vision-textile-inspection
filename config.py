@@ -221,4 +221,5 @@ MQTT_ESP32_ISSUE_TOPIC = f"machine/{DEVICE_ID}/status/esp32_issue"
 MQTT_HEARTBEAT_INTERVAL = 2.0  # seconds
 MQTT_TLS_INSECURE = _env_bool("MQTT_TLS_INSECURE", True)
 MQTT_CAMERA_ISSUE_TOPIC = f"machine/{DEVICE_ID}/status/camera_issue"
+MQTT_CAMERA_CALIBRATION_ISSUE_TOPIC = f"machine/{DEVICE_ID}/status/camera_calibration_ex"  # "invalid" = recalibration needed, "valid" = cleared (retained)
 
