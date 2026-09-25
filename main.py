@@ -7,6 +7,7 @@ import time
 import cv2
 import threading
 import subprocess
+import hashlib
 from datetime import datetime
 import random
 
@@ -31,6 +32,47 @@ from needle_angle_measure import NeedleAngleWorker
 def ts():
     """Return current timestamp in format: [HH:MM:SS]"""
     return datetime.now().strftime("[%H:%M:%S]")
+
+
+CALIBRATION_BAD_HASH_FILE = "camera_extrinsics_bad_hash.txt"
+
+
+def compute_file_hash(path):
+    """Return the SHA-256 of a file (used to detect a new extrinsics calibration), or None on error."""
+    try:
+        digest = hashlib.sha256()
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(65536), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except Exception as exc:
+        print(ts() + f" ⚠️ Failed to hash {path}: {exc}")
+        return None
+
+
+def read_calibration_bad_hash():
+    """Return the extrinsics hash saved when rotation was detected, or None."""
+    try:
+        with open(CALIBRATION_BAD_HASH_FILE, "r", encoding="utf-8") as fh:
+            return fh.read().strip() or None
+    except FileNotFoundError:
+        return None
+    except Exception as exc:
+        print(ts() + f" ⚠️ Failed to read calibration hash state: {exc}")
+        return None
+
+
+def write_calibration_bad_hash(value):
+    """Persist the bad extrinsics hash, or remove the file when value is None."""
+    try:
+        if value is None:
+            if os.path.exists(CALIBRATION_BAD_HASH_FILE):
+                os.remove(CALIBRATION_BAD_HASH_FILE)
+        else:
+            with open(CALIBRATION_BAD_HASH_FILE, "w", encoding="utf-8") as fh:
+                fh.write(value)
+    except Exception as exc:
+        print(ts() + f" ⚠️ Failed to update calibration hash state: {exc}")
 
 
 def run_startup_calibration():
@@ -187,6 +229,7 @@ def main():
             reset_topic=MQTT_RESET_TOPIC,
             on_reset=queue_reset_request,
             esp32_issue_topic=MQTT_ESP32_ISSUE_TOPIC,
+            camera_calibration_issue_topic=MQTT_CAMERA_CALIBRATION_ISSUE_TOPIC,
         )
         heartbeat.start()
         print(ts() +
@@ -224,6 +267,13 @@ def main():
     
     # Step 3: Main measurement loop
     RESET_POST_DELAY_SEC = 2.0
+
+    # Camera calibration status: hash of the extrinsics file that was active when rotation
+    # was detected. A different hash later means the camera has been recalibrated.
+    calibration_bad_hash = read_calibration_bad_hash()
+    calibration_published_state = None  # last state successfully sent on the MQTT topic
+    if LOG_DEBUG:
+        print(ts() + f" Loaded saved bad calibration hash: {calibration_bad_hash or 'none'}")
     last_inference_time = 0
     frame_count = 0
     last_stitch_count = 0
@@ -398,7 +448,7 @@ def main():
                                 qos=0,
                                 retain=False,
                             )
-                        print(ts() + f" 📡 MQTT camera issue sent: {MQTT_CAMERA_ISSUE_TOPIC} -> issue")
+                        print(ts() + f"  MQTT camera issue sent: {MQTT_CAMERA_ISSUE_TOPIC} -> issue")
                     except Exception as exc:
                         print(ts() + f" ⚠️ MQTT camera issue publish failed: {exc}")
 
@@ -482,6 +532,32 @@ def main():
                             print(ts() + f" 📡 MQTT camera issue sent: {MQTT_CAMERA_ISSUE_TOPIC} -> rotated")
                         except Exception as exc:
                             print(ts() + f" ⚠️ MQTT camera rotated publish failed: {exc}")
+
+                    # Decide the calibration status to announce
+                    desired_calibration_state = None
+                    if angle_result.get("rotated"):
+                        desired_calibration_state = "invalid"
+                        current_hash = compute_file_hash(EXTRINSICS_FILE)
+                        if current_hash and current_hash != calibration_bad_hash:
+                            calibration_bad_hash = current_hash
+                            write_calibration_bad_hash(calibration_bad_hash)
+                    elif calibration_bad_hash is not None:
+                        current_hash = compute_file_hash(EXTRINSICS_FILE)
+                        if current_hash and current_hash != calibration_bad_hash:
+                            desired_calibration_state = "valid"
+                        else:
+                            desired_calibration_state = "invalid"
+
+                    if desired_calibration_state and desired_calibration_state != calibration_published_state:
+                        try:
+                            if heartbeat.publish_camera_calibration_issue(desired_calibration_state):
+                                calibration_published_state = desired_calibration_state
+                                print(ts() + f" 📡 MQTT camera calibration sent: {MQTT_CAMERA_CALIBRATION_ISSUE_TOPIC} -> {desired_calibration_state}")
+                                if desired_calibration_state == "valid":
+                                    calibration_bad_hash = None
+                                    write_calibration_bad_hash(None)
+                        except Exception as exc:
+                            print(ts() + f" ⚠️ MQTT camera calibration publish failed: {exc}")
                 
                 # Get stitch count from serial
                 current_stitch_count = serial_reader.get_stitch_count() if serial_reader else last_stitch_count
