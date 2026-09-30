@@ -245,6 +245,11 @@ class NeedleAngleWorker(threading.Thread):
             self._frame_ready.set()
             return True
 
+    def request_recheck(self, delay_sec, now):
+        """Allow the next check after delay_sec instead of waiting the full interval."""
+        with self._lock:
+            self._last_submitted_at = min(self._last_submitted_at, now + delay_sec - self.interval_sec)
+
     def latest_result(self):
         with self._lock:
             return dict(self._latest_result)
