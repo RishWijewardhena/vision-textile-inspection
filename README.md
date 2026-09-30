@@ -43,6 +43,10 @@ The current measurement flow is:
 - ESP32 serial integration for stitch counts and reset commands.
 - MySQL measurement logging.
 - MQTT heartbeat and reset command handling.
+- Needle angle monitoring that detects a rotated camera, confirmed by re-checks
+  before any alert is sent.
+- Retained MQTT camera calibration status (`invalid` / `valid`) and a remote
+  command to clear it.
 - Annotated image saving under session-specific folders.
 - Automatic cleanup of old saved annotations.
 - Camera reconnect handling with webcam driver reload.
@@ -220,6 +224,67 @@ Heartbeat messages are published to:
 machine/<DB_TABLE>/status/heartbeat
 ```
 
+## Camera Rotation and Calibration Status
+
+A background `NeedleAngleWorker` (`needle_angle_measure.py`) checks the needle
+angle every `NEEDLE_ANGLE_CHECK_INTERVAL` seconds (30 min). If the needle is
+outside `NEEDLE_NOT_ROTATED_ANGLE_MIN`–`NEEDLE_NOT_ROTATED_ANGLE_MAX`, the camera
+is considered rotated and the extrinsic calibration is no longer trusted.
+
+### Confirmation before alerting
+
+A single rotated result is not reported, to avoid alerts from false detections:
+
+1. The first rotated result schedules a re-check after `NEEDLE_RECHECK_DELAY`
+   seconds (60 s).
+2. Rotation is confirmed only after `NEEDLE_ROTATION_CONFIRM_COUNT` (3)
+   consecutive rotated results, i.e. the first check plus two re-checks.
+3. A re-check that finds the needle within range, or finds no needle, cancels the
+   confirmation and nothing is sent.
+
+Once confirmed:
+
+- `rotated` is published on `camera_issue` every loop (not retained) until a
+  check finds the needle within range again.
+- The hash of `camera_extrinsics.json` is saved to
+  `camera_extrinsics_bad_hash.txt` and `invalid` is published (retained) on
+  `camera_calibration_ex`.
+
+### Clearing the calibration status
+
+The status returns to `valid` in either of these ways:
+
+- **Recalibrate:** a new extrinsic calibration changes `camera_extrinsics.json`;
+  the app detects the different hash, deletes the bad-hash file and publishes
+  `valid`. Restart the service so the new extrinsics are used for measurements.
+- **Clear command:** publish `clear` (**not retained**) to
+  `machine/<DB_TABLE>/commands/clear_calibration`. The app deletes
+  `camera_extrinsics_bad_hash.txt` through
+  `scripts/clear_calibration_bad_hash.py`, resets its in-memory state and
+  publishes `valid`. No restart is needed.
+
+A retained `clear` command would be re-delivered on every reconnect, so always
+send it without retain.
+
+To delete the file by hand (takes effect after the next restart):
+
+```bash
+python3 scripts/clear_calibration_bad_hash.py
+```
+
+## MQTT Topics
+
+All topics use `DB_TABLE` as the machine ID:
+
+| Topic | Direction | Payload | Retained |
+|---|---|---|---|
+| `machine/<DB_TABLE>/status/heartbeat` | device → broker | `on` every `MQTT_HEARTBEAT_INTERVAL` s | no |
+| `machine/<DB_TABLE>/commands/reset` | broker → device | `reset`; device replies `reset_success` | no |
+| `machine/<DB_TABLE>/commands/clear_calibration` | broker → device | `clear` | no |
+| `machine/<DB_TABLE>/status/esp32_issue` | device → broker | `issue` while the ESP32 is disconnected | no |
+| `machine/<DB_TABLE>/status/camera_issue` | device → broker | `rotated` every loop while rotation is confirmed | no |
+| `machine/<DB_TABLE>/status/camera_calibration_ex` | device → broker | `invalid` / `valid` | yes |
+
 ## Project Structure
 
 ```text
@@ -233,6 +298,7 @@ THREAD/
 ├── database.py
 ├── serial_reader.py
 ├── mqtt_heartbeat.py
+├── needle_angle_measure.py
 ├── hardware_utils.py
 ├── file_cleaner.py
 ├── best_Model.pt
@@ -243,6 +309,7 @@ THREAD/
 ├── auto_runner.sh
 ├── download_calibartion_app.sh
 ├── scripts/
+│   ├── clear_calibration_bad_hash.py
 │   └── create_sudoers_thread_modprobe.sh
 ├── Utils/
 │   ├── auto_capture.py
@@ -267,7 +334,13 @@ THREAD/
   and cleanup settings.
 - `serial_reader.py`: ESP32 serial reader and command sender.
 - `database.py`: MySQL connection and measurement insertion.
-- `mqtt_heartbeat.py`: MQTT heartbeat publisher and reset command listener.
+- `mqtt_heartbeat.py`: MQTT heartbeat publisher and reset / clear calibration
+  command listener.
+- `needle_angle_measure.py`: Needle angle detection worker used to detect a
+  rotated camera.
+- `scripts/clear_calibration_bad_hash.py`: Deletes
+  `camera_extrinsics_bad_hash.txt`; used by the clear calibration command and
+  runnable by hand.
 - `file_cleaner.py`: Deletes old saved annotation files.
 - `hardware_utils.py`: Camera and ESP32 discovery helpers.
 - `calibration.py`: ChArUco calibration helpers.
@@ -298,6 +371,11 @@ Important values in `config.py`:
 - `SAVE_DIR`: root folder for annotated frame output.
 - `FILE_RETENTION_HOURS`, `FILE_CLEANUP_INTERVAL_SECONDS`: saved file cleanup.
 - `SHOW_WINDOWS`: enables/disables OpenCV display windows.
+- `NEEDLE_ANGLE_CHECK_INTERVAL`: seconds between needle angle checks.
+- `NEEDLE_NOT_ROTATED_ANGLE_MIN`, `NEEDLE_NOT_ROTATED_ANGLE_MAX`: needle angle
+  range treated as not rotated (env overridable).
+- `NEEDLE_ROTATION_CONFIRM_COUNT`, `NEEDLE_RECHECK_DELAY`: consecutive rotated
+  checks required before alerting, and the delay between re-checks.
 
 ## Dependencies
 
