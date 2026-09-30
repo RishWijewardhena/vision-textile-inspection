@@ -272,6 +272,12 @@ def main():
     # was detected. A different hash later means the camera has been recalibrated.
     calibration_bad_hash = read_calibration_bad_hash()
     calibration_published_state = None  # last state successfully sent on the MQTT topic
+
+    # Needle rotation is only reported after NEEDLE_ROTATION_CONFIRM_COUNT consecutive rotated
+    # checks, so a single false detection does not raise camera/calibration alerts.
+    last_angle_checked_at = None
+    rotation_streak = 0
+    rotation_confirmed = False
     if LOG_DEBUG:
         print(ts() + f" Loaded saved bad calibration hash: {calibration_bad_hash or 'none'}")
     last_inference_time = 0
@@ -521,7 +527,39 @@ def main():
 
                 if angle_worker and heartbeat:
                     angle_result = angle_worker.latest_result()
-                    if angle_result.get("rotated"):
+                    checked_at = angle_result.get("checked_at")
+
+                    # latest_result() is cached until the next check, so count each result only once
+                    if checked_at is not None and checked_at != last_angle_checked_at:
+                        last_angle_checked_at = checked_at
+
+                        if angle_result.get("rotated"):
+                            rotation_streak += 1
+                            if rotation_streak < NEEDLE_ROTATION_CONFIRM_COUNT:
+                                angle_worker.request_recheck(NEEDLE_RECHECK_DELAY, current_time)
+                                print(ts() + f" 🧭 Needle rotation suspected ({rotation_streak}/{NEEDLE_ROTATION_CONFIRM_COUNT}), re-checking in {NEEDLE_RECHECK_DELAY}s")
+                            else:
+                                if not rotation_confirmed:
+                                    print(ts() + f" 🧭 Needle rotation confirmed ({rotation_streak} consecutive checks)")
+                                rotation_confirmed = True
+                                # remember the extrinsics in use while rotated; a different hash later means recalibrated
+                                if calibration_bad_hash is None:
+                                    current_hash = compute_file_hash(EXTRINSICS_FILE)
+                                    if current_hash:
+                                        calibration_bad_hash = current_hash
+                                        write_calibration_bad_hash(calibration_bad_hash)
+                        elif angle_result.get("detections") and not angle_result.get("error"):
+                            # needle found within range: false alarm or camera fixed
+                            if rotation_streak and not rotation_confirmed:
+                                print(ts() + " 🧭 Needle rotation not confirmed (false detection)")
+                            rotation_streak = 0
+                            rotation_confirmed = False
+                        elif not rotation_confirmed and rotation_streak:
+                            # needle not detected while confirming: do not alert without confirmation
+                            print(ts() + " 🧭 Needle not detected during re-check, rotation not confirmed")
+                            rotation_streak = 0
+
+                    if rotation_confirmed:
                         try:
                             heartbeat.client.publish(
                                 MQTT_CAMERA_ISSUE_TOPIC,
@@ -535,13 +573,7 @@ def main():
 
                     # Decide the calibration status to announce
                     desired_calibration_state = None
-                    if angle_result.get("rotated"):
-                        desired_calibration_state = "invalid"
-                        current_hash = compute_file_hash(EXTRINSICS_FILE)
-                        if current_hash and current_hash != calibration_bad_hash:
-                            calibration_bad_hash = current_hash
-                            write_calibration_bad_hash(calibration_bad_hash)
-                    elif calibration_bad_hash is not None:
+                    if calibration_bad_hash is not None:
                         current_hash = compute_file_hash(EXTRINSICS_FILE)
                         if current_hash and current_hash != calibration_bad_hash:
                             desired_calibration_state = "valid"
