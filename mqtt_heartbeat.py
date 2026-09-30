@@ -18,6 +18,8 @@ class MqttHeartbeat(threading.Thread):
         on_reset=None,
         esp32_issue_topic=None,
         camera_calibration_issue_topic=None,
+        clear_calibration_topic=None,
+        on_clear_calibration=None,
     ):
         super().__init__(daemon=True)
         self.broker = broker
@@ -31,6 +33,8 @@ class MqttHeartbeat(threading.Thread):
         self.on_reset = on_reset
         self.esp32_issue_topic = esp32_issue_topic
         self.camera_calibration_issue_topic = camera_calibration_issue_topic
+        self.clear_calibration_topic = clear_calibration_topic
+        self.on_clear_calibration = on_clear_calibration
 
         self._stop_event = threading.Event()
 
@@ -53,8 +57,18 @@ class MqttHeartbeat(threading.Thread):
         if rc == 0 and self.reset_topic:
             client.subscribe(self.reset_topic, qos=0)
             print(f"✅ MQTT subscribed: {self.reset_topic}")
+        if rc == 0 and self.clear_calibration_topic:
+            try:
+                client.subscribe(self.clear_calibration_topic, qos=0)
+                print(f"✅ MQTT subscribed to clear calibration topic: {self.clear_calibration_topic}")
+            except Exception as exc:
+                print(f"❌ MQTT clear calibration subscribe failed: {exc}")
 
     def _on_message(self, client, userdata, msg):
+        if self.clear_calibration_topic and msg.topic == self.clear_calibration_topic:
+            self._handle_clear_calibration(msg)
+            return
+
         if not self.reset_topic or msg.topic != self.reset_topic:
             return
 
@@ -68,6 +82,18 @@ class MqttHeartbeat(threading.Thread):
                 self.on_reset()
             except Exception as exc:
                 print(f"⚠️ Reset callback failed: {exc}")
+
+    def _handle_clear_calibration(self, msg):
+        payload = msg.payload.decode("utf-8", errors="ignore").strip().lower()
+        if payload != "clear":
+            return
+
+        print(f"📨 MQTT clear calibration command received on topic: {self.clear_calibration_topic}")
+        if self.on_clear_calibration:
+            try:
+                self.on_clear_calibration()
+            except Exception as exc:
+                print(f"❌ MQTT clear calibration callback failed: {exc}")
 
     def publish_reset_success(self):
         if not self.reset_topic:
