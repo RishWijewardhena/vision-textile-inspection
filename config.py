@@ -224,4 +224,5 @@ MQTT_HEARTBEAT_INTERVAL = 2.0  # seconds
 MQTT_TLS_INSECURE = _env_bool("MQTT_TLS_INSECURE", True)
 MQTT_CAMERA_ISSUE_TOPIC = f"machine/{DEVICE_ID}/status/camera_issue"
 MQTT_CAMERA_CALIBRATION_ISSUE_TOPIC = f"machine/{DEVICE_ID}/status/camera_calibration_ex"  # "invalid" = recalibration needed, "valid" = cleared (retained)
+MQTT_CLEAR_CALIBRATION_TOPIC = f"machine/{DEVICE_ID}/commands/clear_calibration"  # send "clear" to delete the calibration bad-hash file and publish "valid"
 
