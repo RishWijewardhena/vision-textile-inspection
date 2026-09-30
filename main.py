@@ -27,6 +27,7 @@ from collections import deque
 # MQTT heartbeat thread (create this file: mqtt_heartbeat.py)
 from mqtt_heartbeat import MqttHeartbeat
 from needle_angle_measure import NeedleAngleWorker
+from scripts.clear_calibration_bad_hash import clear_calibration_bad_hash
 
 
 def ts():
@@ -216,6 +217,9 @@ def main():
         """Queue reset work to run inside the main loop thread."""
         reset_requested.set()
 
+    # MQTT callbacks run on the MQTT thread; the clear itself is done in the main loop
+    clear_calibration_requested = threading.Event()
+
     try:
         # Use MQTT constants 
         heartbeat = MqttHeartbeat(
@@ -230,6 +234,8 @@ def main():
             on_reset=queue_reset_request,
             esp32_issue_topic=MQTT_ESP32_ISSUE_TOPIC,
             camera_calibration_issue_topic=MQTT_CAMERA_CALIBRATION_ISSUE_TOPIC,
+            clear_calibration_topic=MQTT_CLEAR_CALIBRATION_TOPIC,
+            on_clear_calibration=clear_calibration_requested.set,
         )
         heartbeat.start()
         print(ts() +
@@ -403,6 +409,14 @@ def main():
             if reset_requested.is_set():
                 reset_requested.clear()
                 perform_reset()
+
+            if clear_calibration_requested.is_set():
+                clear_calibration_requested.clear()
+                if clear_calibration_bad_hash(CALIBRATION_BAD_HASH_FILE):
+                    calibration_bad_hash = None
+                    if heartbeat and heartbeat.publish_camera_calibration_issue("valid"):
+                        calibration_published_state = "valid"
+                        print(ts() + f" 📡 MQTT camera calibration sent: {MQTT_CAMERA_CALIBRATION_ISSUE_TOPIC} -> valid")
             
             # ===== CHECK DATABASE RECONNECTION =====
             # Check if DB reconnected since last failure
